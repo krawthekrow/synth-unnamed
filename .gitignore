@@ -1,0 +1,6 @@
+node_modules/
+*.swp
+*.vim
+sounds/
+bin/
+/synth.js
