@@ -3,10 +3,10 @@ const path = require('path');
 const APP_DIR = path.resolve(__dirname, 'src');
 
 module.exports = {
-    entry: path.join(APP_DIR, 'SynthAppEntry.jsx'),
+    entry: path.resolve(APP_DIR, 'SynthAppEntry.jsx'),
     output: {
         library: 'SynthApp',
-        path: path.join(__dirname, 'bin'),
+        path: path.resolve(__dirname, 'bin'),
         filename: 'bundle.js'
     },
     module: {

@@ -3,4 +3,5 @@ node_modules/
 *.vim
 sounds/
 bin/
+archives/
 /synth.js

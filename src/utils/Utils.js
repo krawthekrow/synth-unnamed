@@ -75,6 +75,9 @@ class Dimensions{
     getArea(){
         return this.width * this.height;
     }
+    equals(oDims){
+        return this.width == oDims.width && this.height == oDims.height;
+    }
     toArray(){
         return [this.width, this.height];
     }
@@ -111,6 +114,19 @@ class Rect{
     }
 };
 
+class Array2D{
+    constructor(dims, data){
+        this.dims = dims;
+        this.data = data;
+    }
+    get width(){
+        return this.dims.width;
+    }
+    get height(){
+        return this.dims.height;
+    }
+};
+
 class MouseButton{
 };
 MouseButton.MOUSE_LEFT = 0;
@@ -128,11 +144,26 @@ class Utils{
         );
     }
     static compute2DArray(dims, func){
-        return compute1DArray(dims.height,
-            i => compute1DArray(dims.width,
+        return Utils.compute1DArray(dims.height,
+            i => Utils.compute1DArray(dims.width,
                 i2 => func(new Vector(i2, i))
             )
         );
+    }
+    static compute2DArrayAsArray2D(dims, func){
+        return new Array2D(dims, Utils.compute2DArray(dims, func));
+    }
+    static flatten(arr){
+        const result = [];
+        for(let i = 0; i < arr.length; i++){
+            for(let i2 = 0; i2 < arr[i].length; i2++){
+                result.push(arr[i][i2]);
+            }
+        }
+        return result;
+    }
+    static clamp(num, min, max){
+        return (num <= min) ? min : ((num >= max) ? max : num);
     }
 };
 Utils.DIRS4 = [
@@ -146,6 +177,7 @@ module.exports = {
     Vector: Vector,
     Dimensions: Dimensions,
     Rect: Rect,
+    Array2D: Array2D,
     MouseButton: MouseButton,
     Utils: Utils
 };

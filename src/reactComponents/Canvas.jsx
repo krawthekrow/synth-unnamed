@@ -14,8 +14,6 @@ class Canvas extends React.Component{
         this.ctx.fillStyle = 'red';
         this.ctx.fill();
     }
-    componentWillUnmount(){
-    }
     setDimensions(newDims){
         this.canvas.width = newDims.width;
         this.canvas.height = newDims.height;

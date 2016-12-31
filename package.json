@@ -9,6 +9,7 @@
   "author": "krawthekrow",
   "license": "MIT",
   "dependencies": {
+    "complex-js": "^3.2.0",
     "react": "^15.4.1",
     "react-dom": "^15.4.1"
   },
