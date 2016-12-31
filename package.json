@@ -1,6 +1,6 @@
 {
   "name": "synth",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Currently still just me messing around.",
   "main": "synth.js",
   "scripts": {
