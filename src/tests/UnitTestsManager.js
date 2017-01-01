@@ -11,6 +11,7 @@ class TestUtils{
         for(let i = 0; i < arr1.dims.height; i++){
             for(let i2 = 0; i2 < arr1.dims.width; i2++){
                 if(!cmpFunc(arr1.data[i][i2], arr2.data[i][i2])){
+                    //console.log(i.toString() + ' ' + i2.toString() + ' ' + arr1.data[i][i2].toString() + ' ' + arr2.data[i][i2].toString());
                     return false;
                 }
             }
@@ -181,6 +182,29 @@ gl_FragData[1] = packFloat(
                 manager.disposeGPUArr(gpuArr2);
             })();
         })();
+        (() => {
+            const manager = new GPGPUManager(ctx, true);
+            (() => {
+                const gpuArr = manager.flatArrToGPUArr(
+                    Utils.flatten(randArr.data),
+                    randArr.dims, 1
+                );
+                const aToRKernel = manager.createKernel(
+`gl_FragData[0] = vec4(texture2D(uArr, vCoord).a, 0.0, 0.0, 0.0);
+`,
+                ['uArr'], [], 1);
+                const resGPUArr = manager.runKernel(aToRKernel, [
+                    gpuArr
+                ], testDims)[0];
+                manager.disposeKernel(aToRKernel);
+                const resArr = manager.gpuArrToArr(resGPUArr);
+                manager.disposeGPUArr(resGPUArr);
+                TestUtils.processTestResult(
+                    'Data transfer (float, flat alpha)',
+                    TestUtils.compareArray2D(randArr, resArr, TestUtils.floatEquals)
+                );
+            })();
+        })();
     }
 };
 
@@ -189,14 +213,14 @@ class FFTUnitTests{
         const ctx = GPGPUManager.createGPGPUCanvasContext();
         const manager = new GPGPUManager(ctx, false);
         const managerFloat = new GPGPUManager(ctx, true);
-        const testDims = new Dimensions(1, 256);
+        const testDims = new Dimensions(1, 128);
         const randArr = Utils.compute2DArrayAsArray2D(
             testDims,
             pos => Math.random()
         );
         const gpuDFT = new GPUDFT(manager);
         const gpuFFT = new GPUFFT(manager);
-        const gpuFFTFloat = new GPUFFT(managerFloat, true);
+        const gpuFFTFloat = new GPUFFT(managerFloat);
         const dftArr = gpuDFT.parallelDFT(randArr);
         const fftArr = gpuFFT.parallelFFT(randArr);
         const fftFloatArr = gpuFFTFloat.parallelFFT(randArr);
@@ -204,11 +228,11 @@ class FFTUnitTests{
         gpuFFT.dispose();
         gpuFFTFloat.dispose();
         TestUtils.processTestResult(
-            'GPU FFT and DFT',
+            'GPU FFT vs DFT',
             TestUtils.compareArray2D(dftArr, fftArr, (x, y) => TestUtils.floatEquals(x, y, 1e-3))
         );
         TestUtils.processTestResult(
-            'GPU FFT packed float and float',
+            'GPU FFT packed vs float',
             TestUtils.compareArray2D(fftArr, fftFloatArr, (x, y) => TestUtils.floatEquals(x, y, 1e-3))
         );
     }

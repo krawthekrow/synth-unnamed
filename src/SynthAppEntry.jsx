@@ -18,7 +18,7 @@ class SynthApp extends React.Component {
     }
     componentDidMount(){
         //UnitTestsManager.runAllTests();
-        FFTTimingTestManager.run();
+        //FFTTimingTestManager.run();
     }
     handleSoundUpload(data){
         const ctx = new (window.AudioContext || window.webkitAudioContext)();

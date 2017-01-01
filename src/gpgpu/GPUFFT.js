@@ -54,12 +54,15 @@ gl_FragData[1] = packFloat(atan(val.y, val.x));
 `,
         ['uReal', 'uImg'], [], 2, GPGPUManager.PACK_FLOAT_INCLUDE + GPGPUComplexIncludes.LIB);
     }
-    parallelFFT(arr){
+    parallelFFT(arr, asGPUArr = false){
         const fftWidth = arr.dims.height;
         if((fftWidth & (fftWidth - 1)) != 0){
             throw 'Cannot do FFT on non-power of two width.';
         }
+        const startTime = performance.now();
         let realArr = this.manager.arrToGPUArr(arr);
+        const endTime = performance.now();
+        //console.log(Math.floor(endTime - startTime).toString() + 'ms');
         let imgArr = this.manager.runKernel(this.zeroKernel, [], arr.dims)[0];
         for(let butterflyWidth = 1; butterflyWidth < fftWidth; butterflyWidth *= 2){
             const stepResGPUArrs = this.manager.runKernel(
@@ -72,18 +75,18 @@ gl_FragData[1] = packFloat(atan(val.y, val.x));
             realArr = stepResGPUArrs[0];
             imgArr = stepResGPUArrs[1];
         }
-        //const startTime = performance.now();
-        //const endTime = performance.now();
-        //console.log(Math.floor(endTime - startTime).toString() + 'ms');
         const resGPUArrs = this.manager.runKernel(
             this.normAndPolarKernel, [realArr, imgArr], arr.dims
         );
-        const resArr = this.manager.gpuArrToArr(resGPUArrs[0]);
         this.manager.disposeGPUArr(realArr);
         this.manager.disposeGPUArr(imgArr);
-        this.manager.disposeGPUArr(resGPUArrs[0]);
         this.manager.disposeGPUArr(resGPUArrs[1]);
-        return resArr;
+        if(asGPUArr) return resGPUArrs[0];
+        else{
+            const resArr = this.manager.gpuArrToArr(resGPUArrs[0]);
+            this.manager.disposeGPUArr(resGPUArrs[0]);
+            return resArr;
+        }
     }
     dispose(){
         this.manager.disposeKernel(this.zeroKernel);
@@ -106,17 +109,17 @@ int refIndex1 = (column / 2) * uButterflyWidth + row;
 ivec2 refPos1 = ivec2(threadId.x, refIndex1);
 int refIndex2 = refIndex1 + uDims.y / 2;
 ivec2 refPos2 = ivec2(threadId.x, refIndex2);
-vec2 ref1 = arrGet(uArr, refPos1).xy;
-vec2 ref2 = arrGet(uArr, refPos2).xy;
+vec2 ref1 = arrGet(uArr, refPos1).ar;
+vec2 ref2 = arrGet(uArr, refPos2).ar;
 vec2 res = ref1 + complexMult(twiddle, ref2);
-gl_FragData[0] = vec4(res, 0.0, 0.0);
+gl_FragData[0] = vec4(res.y, 0.0, 0.0, res.x);
 `,
         ['uArr'], [{
             type: 'int',
             name: 'uButterflyWidth'
         }], 1, GPGPUComplexIncludes.PI + GPGPUComplexIncludes.LIB);
         this.normAndPolarKernel = manager.createKernel(
-`vec2 val = texture2D(uArr, vCoord).xy;
+`vec2 val = texture2D(uArr, vCoord).ar;
 gl_FragData[0] = vec4(
     length(val) / sqrt(float(uDims.y)),
     atan(val.y, val.x),
@@ -124,12 +127,17 @@ gl_FragData[0] = vec4(
 `,
         ['uArr'], [], 1, GPGPUComplexIncludes.LIB);
     }
-    parallelFFT(arr){
+    parallelFFT(arr, asGPUArr = false){
         const fftWidth = arr.dims.height;
         if((fftWidth & (fftWidth - 1)) != 0){
             throw 'Cannot do FFT on non-power of two width.';
         }
-        let stepArr = this.manager.arrToGPUArr(arr);
+        const startTime = performance.now();
+        let stepArr = this.manager.flatArrToGPUArr(
+            Utils.flatten(arr.data), arr.dims, 1
+        );
+        const endTime = performance.now();
+        //console.log(Math.floor(endTime - startTime).toString() + 'ms');
         for(let butterflyWidth = 1; butterflyWidth < fftWidth; butterflyWidth *= 2){
             const stepResGPUArr = this.manager.runKernel(
                 this.fftKernel, [stepArr], arr.dims, {
@@ -138,14 +146,18 @@ gl_FragData[0] = vec4(
             );
             this.manager.disposeGPUArr(stepArr);
             stepArr = stepResGPUArr[0];
+            //console.log(Utils.flatten(this.manager.gpuArrToArr(stepArr).data));
         }
         const resGPUArr = this.manager.runKernel(
             this.normAndPolarKernel, [stepArr], arr.dims
         )[0];
-        const resArr = this.manager.gpuArrToArr(resGPUArr);
         this.manager.disposeGPUArr(stepArr);
-        this.manager.disposeGPUArr(resGPUArr);
-        return resArr;
+        if(asGPUArr) return resGPUArr;
+        else{
+            const resArr = this.manager.gpuArrToArr(resGPUArr);
+            this.manager.disposeGPUArr(resGPUArr);
+            return resArr;
+        }
     }
     dispose(){
         this.manager.disposeKernel(this.fftKernel);
@@ -154,13 +166,13 @@ gl_FragData[0] = vec4(
 };
 
 class GPUFFT{
-    constructor(manager, useFloat = false){
-        this.fftManager = useFloat ?
+    constructor(manager){
+        this.fftManager = manager.useFloat ?
             new GPUFFTFloat(manager) :
             new GPUFFTPacked(manager);
     }
-    parallelFFT(arr){
-        return this.fftManager.parallelFFT(arr);
+    parallelFFT(arr, asGPUArr = false){
+        return this.fftManager.parallelFFT(arr, asGPUArr);
     }
     dispose(){
         this.fftManager.dispose();

@@ -19,14 +19,17 @@ gl_FragData[1] = packFloat(atan(res.y, res.x));
 `,
         ['uArr'], [], 2, GPGPUManager.PACK_FLOAT_INCLUDE + GPGPUComplexIncludes.PI + GPGPUComplexIncludes.LIB);
     }
-    parallelDFT(arr){
+    parallelDFT(arr, asGPUArr = false){
         const gpuArr = this.manager.arrToGPUArr(arr);
         const resGPUArrs = this.manager.runKernel(this.dftKernel, [gpuArr], arr.dims);
-        const resArr = this.manager.gpuArrToArr(resGPUArrs[0]);
-        this.manager.disposeGPUArr(resGPUArrs[0]);
         this.manager.disposeGPUArr(resGPUArrs[1]);
         this.manager.disposeGPUArr(gpuArr);
-        return resArr;
+        if(asGPUArr) return resGPUArrs[0];
+        else{
+            const resArr = this.manager.gpuArrToArr(resGPUArrs[0]);
+            this.manager.disposeGPUArr(resGPUArrs[0]);
+            return resArr;
+        }
     }
     dispose(){
         this.manager.disposeKernel(this.dftKernel);

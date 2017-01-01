@@ -44,6 +44,18 @@ class GPGPUManager{
         this.quadPosBuff = this.createStaticArrBuff(this.ctx.ARRAY_BUFFER, GPGPUManager.FULLSCREEN_QUAD_POS_ARR);
         this.quadIndexBuff = this.createStaticArrBuff(this.ctx.ELEMENT_ARRAY_BUFFER, GPGPUManager.FULLSCREEN_QUAD_INDEX_ARR);
     }
+    static createGPGPUCanvasContext(canvas = null){
+        if(canvas == null){
+            canvas = document.createElement('canvas');
+            canvas.width = 1;
+            canvas.height = 1;
+        }
+        const options = {
+            depth: false,
+            antialias: false
+        };
+        return canvas.getContext('webgl', options) || canvas.getContext('webgl-experimental', options);
+    };
     createStaticArrBuff(type, contents){
         const buff = this.ctx.createBuffer();
         this.ctx.bindBuffer(type, buff);
@@ -69,14 +81,14 @@ class GPGPUManager{
         this.ctx.linkProgram(program);
         return new WebGLProgramInfo(program, vertShader, fragShader);
     }
-    createComputeTexture(dims, type = this.ctx.FLOAT, contents = null){
+    createComputeTexture(dims, type = this.ctx.FLOAT, contents = null, format = this.ctx.RGBA){
         const tex = this.ctx.createTexture();
         this.ctx.bindTexture(this.ctx.TEXTURE_2D, tex);
         this.ctx.texParameteri(this.ctx.TEXTURE_2D, this.ctx.TEXTURE_MIN_FILTER, this.ctx.NEAREST);
         this.ctx.texParameteri(this.ctx.TEXTURE_2D, this.ctx.TEXTURE_MAG_FILTER, this.ctx.NEAREST);
         this.ctx.texParameteri(this.ctx.TEXTURE_2D, this.ctx.TEXTURE_WRAP_S, this.ctx.CLAMP_TO_EDGE);
         this.ctx.texParameteri(this.ctx.TEXTURE_2D, this.ctx.TEXTURE_WRAP_T, this.ctx.CLAMP_TO_EDGE);
-        this.ctx.texImage2D(this.ctx.TEXTURE_2D, 0, this.ctx.RGBA, dims.width, dims.height, 0, this.ctx.RGBA, type, contents);
+        this.ctx.texImage2D(this.ctx.TEXTURE_2D, 0, format, dims.width, dims.height, 0, format, type, contents);
         return tex;
     }
     createFBO(textures){
@@ -147,23 +159,31 @@ class GPGPUManager{
     disposeGPUArr(gpuArr){
         this.ctx.deleteTexture(gpuArr.tex);
     }
+    flatArrToGPUArr(arr, dims, numChannels = 4){
+        if(!this.useFloat && numChannels != 4) throw 'Packed float arrays require 4 channels.';
+        let format = null;
+        if(numChannels === 1) format = this.ctx.ALPHA;
+        else if(numChannels === 2) throw 'WebGL 1.0 does not support RG textures.';
+        else if(numChannels === 3) format = this.ctx.RGB;
+        else if(numChannels === 4) format = this.ctx.RGBA;
+        else throw 'Unsupported number of channels.';
+        const floatArr = new Float32Array(arr);
+        return new GPUArray(
+            dims,
+            this.createComputeTexture(dims, this.useFloat ? this.ctx.FLOAT : this.ctx.UNSIGNED_BYTE, this.useFloat ? floatArr : new Uint8Array(floatArr.buffer), format)
+        );
+    }
     arrToGPUArr(arr, singleChannel = true){
         if(!this.useFloat && !singleChannel){
             console.log('Cannot pack multiple packed float channels.');
         }
         const pixelFlatArr = Utils.flatten(arr.data);
-        const floatFlatArr = new Float32Array(
-            this.useFloat ? Utils.flatten(
-                singleChannel ?
-                pixelFlatArr.map(val => [val, 0, 0, 0]) :
-                pixelFlatArr
-            ) : pixelFlatArr
-        );
-        const flatArr = this.useFloat ? floatFlatArr : (new Uint8Array(floatFlatArr.buffer));
-        return new GPUArray(
-            arr.dims,
-            this.createComputeTexture(arr.dims, this.useFloat ? this.ctx.FLOAT : this.ctx.UNSIGNED_BYTE, flatArr)
-        );
+        const flatArr = this.useFloat ? Utils.flatten(
+            singleChannel ?
+            pixelFlatArr.map(val => [val, 0, 0, 0]) :
+            pixelFlatArr
+        ) : pixelFlatArr;
+        return this.flatArrToGPUArr(flatArr, arr.dims);
     }
     gpuArrToArr(gpuArr, singleChannel = true){
         if(!this.useFloat && !singleChannel){
@@ -281,19 +301,6 @@ GPGPUManager.ENDIANNESS = (() => {
     if (c[0] == 0xde) return 'BE';
     throw new Error('unknown endianness');
 })();
-
-GPGPUManager.createGPGPUCanvasContext = (canvas = null) => {
-    if(canvas == null){
-        canvas = document.createElement('canvas');
-        canvas.width = 1;
-        canvas.height = 1;
-    }
-    const options = {
-        depth: false,
-        antialias: false
-    };
-    return canvas.getContext('webgl', options) || canvas.getContext('webgl-experimental', options);
-};
 
 GPGPUManager.createVertShaderSrc = (flipY = false) =>
 `precision highp float;
