@@ -5,9 +5,10 @@ import SpectrogramCanvas from 'reactComponents/SpectrogramCanvas.jsx';
 import Canvas from 'reactComponents/Canvas.jsx';
 import TestCanvas from 'reactComponents/TestCanvas.jsx';
 import {Utils, Dimensions} from 'utils/Utils.js';
-import Complex from 'complex-js';
+import UnitTestsManager from 'tests/UnitTestsManager.js';
 import GPGPUManager from 'gpgpu/GPGPUManager.js';
 import GPUDFT from 'gpgpu/GPUDFT.js';
+import GPUFFT from 'gpgpu/GPUFFT.js';
 
 class SynthApp extends React.Component {
     constructor(props){
@@ -15,6 +16,7 @@ class SynthApp extends React.Component {
         this.sound = null;
     }
     componentDidMount(){
+        UnitTestsManager.runAllTests();
     }
     handleSoundUpload(data){
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -47,8 +49,9 @@ class SynthApp extends React.Component {
             pos => bufferView[pos.x * windSz + pos.y] * windFunc[pos.y]
         );
         const gpgpuManager = new GPGPUManager(null, false);
-        const gpuDFT = new GPUDFT(gpgpuManager);
-        const spectrum = gpuDFT.parallelDFT(dftInput).data.slice(halfWindSz, windSz);
+        const gpuFFT = new GPUFFT(gpgpuManager);
+        const spectrum = gpuFFT.parallelFFT(dftInput).data.slice(halfWindSz, windSz);
+        gpuFFT.dispose();
         const maxMag = 5;
         const flatSpectrum = Utils.flatten(Utils.flatten(spectrum).map(mag => [
             Math.floor(Utils.clamp(Math.log(mag) + 10, 0, maxMag) / maxMag * 256),

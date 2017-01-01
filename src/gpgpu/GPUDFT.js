@@ -21,10 +21,11 @@ gl_FragData[1] = packFloat(atan(res.y, res.x));
     }
     parallelDFT(arr){
         const gpuArr = this.manager.arrToGPUArr(arr);
-        const resGPUArr = this.manager.runKernel(this.dftKernel, [gpuArr], arr.dims)[0];
+        const resGPUArrs = this.manager.runKernel(this.dftKernel, [gpuArr], arr.dims);
+        const resArr = this.manager.gpuArrToArr(resGPUArrs[0]);
+        this.manager.disposeGPUArr(resGPUArrs[0]);
+        this.manager.disposeGPUArr(resGPUArrs[1]);
         this.manager.disposeGPUArr(gpuArr);
-        const resArr = this.manager.gpuArrToArr(resGPUArr);
-        this.manager.disposeGPUArr(resGPUArr);
         return resArr;
     }
     dispose(){
