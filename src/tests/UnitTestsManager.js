@@ -186,24 +186,30 @@ gl_FragData[1] = packFloat(
 
 class FFTUnitTests{
     static run(){
-        const manager = new GPGPUManager(
-            GPGPUManager.createGPGPUCanvasContext(),
-            false
-        );
+        const ctx = GPGPUManager.createGPGPUCanvasContext();
+        const manager = new GPGPUManager(ctx, false);
+        const managerFloat = new GPGPUManager(ctx, true);
         const testDims = new Dimensions(1, 256);
         const randArr = Utils.compute2DArrayAsArray2D(
             testDims,
             pos => Math.random()
         );
         const gpuDFT = new GPUDFT(manager);
-        const dftArr = gpuDFT.parallelDFT(randArr);
-        gpuDFT.dispose();
         const gpuFFT = new GPUFFT(manager);
+        const gpuFFTFloat = new GPUFFT(managerFloat, true);
+        const dftArr = gpuDFT.parallelDFT(randArr);
         const fftArr = gpuFFT.parallelFFT(randArr);
+        const fftFloatArr = gpuFFTFloat.parallelFFT(randArr);
+        gpuDFT.dispose();
         gpuFFT.dispose();
+        gpuFFTFloat.dispose();
         TestUtils.processTestResult(
             'GPU FFT and DFT',
             TestUtils.compareArray2D(dftArr, fftArr, (x, y) => TestUtils.floatEquals(x, y, 1e-3))
+        );
+        TestUtils.processTestResult(
+            'GPU FFT packed float and float',
+            TestUtils.compareArray2D(fftArr, fftFloatArr, (x, y) => TestUtils.floatEquals(x, y, 1e-3))
         );
     }
 };

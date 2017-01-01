@@ -10,11 +10,8 @@ License: BSD
 
 */
 
-class GPUFFT{
+class GPUFFTPacked{
     constructor(manager){
-        if(manager.useFloat){
-            throw 'GPUDFT does not support floating point textures yet.';
-        }
         this.manager = manager;
         this.zeroKernel = manager.createKernel(
 `gl_FragData[0] = packFloat(0.0);
@@ -75,6 +72,9 @@ gl_FragData[1] = packFloat(atan(val.y, val.x));
             realArr = stepResGPUArrs[0];
             imgArr = stepResGPUArrs[1];
         }
+        //const startTime = performance.now();
+        //const endTime = performance.now();
+        //console.log(Math.floor(endTime - startTime).toString() + 'ms');
         const resGPUArrs = this.manager.runKernel(
             this.normAndPolarKernel, [realArr, imgArr], arr.dims
         );
@@ -89,6 +89,81 @@ gl_FragData[1] = packFloat(atan(val.y, val.x));
         this.manager.disposeKernel(this.zeroKernel);
         this.manager.disposeKernel(this.fftKernel);
         this.manager.disposeKernel(this.normAndPolarKernel);
+    }
+};
+
+class GPUFFTFloat{
+    constructor(manager){
+        this.manager = manager;
+        this.fftKernel = manager.createKernel(
+`//factor of two cancels out for 2PI and period
+vec2 twiddle = complexExp(vec2(0.0,
+    -PI * float(threadId.y) / float(uButterflyWidth)
+));
+int column = threadId.y / uButterflyWidth;
+int row = threadId.y - column * uButterflyWidth;
+int refIndex1 = (column / 2) * uButterflyWidth + row;
+ivec2 refPos1 = ivec2(threadId.x, refIndex1);
+int refIndex2 = refIndex1 + uDims.y / 2;
+ivec2 refPos2 = ivec2(threadId.x, refIndex2);
+vec2 ref1 = arrGet(uArr, refPos1).xy;
+vec2 ref2 = arrGet(uArr, refPos2).xy;
+vec2 res = ref1 + complexMult(twiddle, ref2);
+gl_FragData[0] = vec4(res, 0.0, 0.0);
+`,
+        ['uArr'], [{
+            type: 'int',
+            name: 'uButterflyWidth'
+        }], 1, GPGPUComplexIncludes.PI + GPGPUComplexIncludes.LIB);
+        this.normAndPolarKernel = manager.createKernel(
+`vec2 val = texture2D(uArr, vCoord).xy;
+gl_FragData[0] = vec4(
+    length(val) / sqrt(float(uDims.y)),
+    atan(val.y, val.x),
+    0.0, 0.0);
+`,
+        ['uArr'], [], 1, GPGPUComplexIncludes.LIB);
+    }
+    parallelFFT(arr){
+        const fftWidth = arr.dims.height;
+        if((fftWidth & (fftWidth - 1)) != 0){
+            throw 'Cannot do FFT on non-power of two width.';
+        }
+        let stepArr = this.manager.arrToGPUArr(arr);
+        for(let butterflyWidth = 1; butterflyWidth < fftWidth; butterflyWidth *= 2){
+            const stepResGPUArr = this.manager.runKernel(
+                this.fftKernel, [stepArr], arr.dims, {
+                    uButterflyWidth: butterflyWidth
+                }
+            );
+            this.manager.disposeGPUArr(stepArr);
+            stepArr = stepResGPUArr[0];
+        }
+        const resGPUArr = this.manager.runKernel(
+            this.normAndPolarKernel, [stepArr], arr.dims
+        )[0];
+        const resArr = this.manager.gpuArrToArr(resGPUArr);
+        this.manager.disposeGPUArr(stepArr);
+        this.manager.disposeGPUArr(resGPUArr);
+        return resArr;
+    }
+    dispose(){
+        this.manager.disposeKernel(this.fftKernel);
+        this.manager.disposeKernel(this.normAndPolarKernel);
+    }
+};
+
+class GPUFFT{
+    constructor(manager, useFloat = false){
+        this.fftManager = useFloat ?
+            new GPUFFTFloat(manager) :
+            new GPUFFTPacked(manager);
+    }
+    parallelFFT(arr){
+        return this.fftManager.parallelFFT(arr);
+    }
+    dispose(){
+        this.fftManager.dispose();
     }
 };
 

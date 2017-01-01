@@ -6,19 +6,19 @@ import GPUFFT from 'gpgpu/GPUFFT.js';
 
 class FFTTimingTestManager{
     static run(){
-        const manager = new GPGPUManager(
-            GPGPUManager.createGPGPUCanvasContext(),
-            false
-        );
-        const testDims = new Dimensions(4000, 1024);
+        const ctx = GPGPUManager.createGPGPUCanvasContext();
+        const manager = new GPGPUManager(ctx, false);
+        const managerFloat = new GPGPUManager(ctx, true);
+        const testDims = new Dimensions(1000, 1024);
         const randArr = Utils.compute2DArrayAsArray2D(
             testDims,
             pos => Math.random()
         );
         const gpuDFT = new GPUDFT(manager);
         const gpuFFT = new GPUFFT(manager);
+        const gpuFFTFloat = new GPUFFT(managerFloat, true);
         const eventLoop = new EventLoop();
-        let dftTime = 0, fftTime = 0;
+        let dftTime = 0, fftTime = 0, fftFloatTime = 0;
         eventLoop.addTask(() => {
             const startTime = performance.now();
             const dftArr = gpuDFT.parallelDFT(randArr);
@@ -32,9 +32,15 @@ class FFTTimingTestManager{
             fftTime = endTime - startTime;
         });
         eventLoop.addTask(() => {
+            const startTime = performance.now();
+            const fftFloatArr = gpuFFTFloat.parallelFFT(randArr);
+            const endTime = performance.now();
+            fftFloatTime = endTime - startTime;
+        });
+        eventLoop.addTask(() => {
             gpuDFT.dispose();
             gpuFFT.dispose();
-            console.log('DFT: ' + Math.floor(dftTime).toString() + 'ms; FFT: ' + Math.floor(fftTime).toString() + 'ms.');
+            console.log('DFT: ' + Math.floor(dftTime).toString() + 'ms; FFT (packed): ' + Math.floor(fftTime).toString() + 'ms; FFT (float): ' + Math.floor(fftFloatTime).toString() + 'ms.');
         });
         eventLoop.start();
     }
