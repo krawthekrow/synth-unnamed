@@ -1,25 +1,29 @@
 import Queue from 'utils/Queue.js';
 
 class EventLoopTask{
-    constructor(callback, checkValid = null, invalidCallback = null){
+    constructor(run, checkValid = null, invalidCallback = null){
         if(checkValid == null){
             checkValid = () => true;
         }
         if(invalidCallback == null){
             invalidCallback = () => {};
         }
-        this.callback = callback;
+        this.run = run;
         this.checkValid = checkValid;
         this.invalidCallback = invalidCallback;
     }
 };
 
 class EventLoop{
-    constructor(){
+    constructor(updateFunc = null){
         this.tasks = new Queue();
         this.enabled = false;
+        this.updateFunc = updateFunc;
         this.loopFunc = () => {
             if(!this.enabled) return;
+            if(this.updateFunc != null){
+                this.updateFunc();
+            }
             while(!this.tasks.isEmpty()){
                 const task = this.tasks.pop();
                 if(task.checkValid()){

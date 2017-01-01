@@ -29,12 +29,14 @@ class Queue{
         if(this.arr.length == 0){
             throw 'Cannot pop from empty queue.';
         }
-        const res = this.arr[offset];
-        offset++;
-        if(offset * 2 >= this.arr.length){
-            this.arr = this.arr.slice(offset);
-            offset = 0;
+        const res = this.arr[this.offset];
+        this.offset++;
+        if(this.offset * 2 >= this.arr.length){
+            this.arr = this.arr.slice(this.offset);
+            this.offset = 0;
         }
         return res;
     }
 };
+
+module.exports = Queue;

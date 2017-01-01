@@ -190,7 +190,7 @@ class FFTUnitTests{
             GPGPUManager.createGPGPUCanvasContext(),
             false
         );
-        const testDims = new Dimensions(1, 4096);
+        const testDims = new Dimensions(1, 256);
         const randArr = Utils.compute2DArrayAsArray2D(
             testDims,
             pos => Math.random()
@@ -203,7 +203,7 @@ class FFTUnitTests{
         gpuFFT.dispose();
         TestUtils.processTestResult(
             'GPU FFT and DFT',
-            TestUtils.compareArray2D(dftArr, fftArr, (x, y) => TestUtils.floatEquals(x, y, 1e-1))
+            TestUtils.compareArray2D(dftArr, fftArr, (x, y) => TestUtils.floatEquals(x, y, 1e-3))
         );
     }
 };

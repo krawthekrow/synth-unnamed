@@ -6,6 +6,7 @@ import Canvas from 'reactComponents/Canvas.jsx';
 import TestCanvas from 'reactComponents/TestCanvas.jsx';
 import {Utils, Dimensions} from 'utils/Utils.js';
 import UnitTestsManager from 'tests/UnitTestsManager.js';
+import FFTTimingTestManager from 'tests/FFTTimingTestManager.js';
 import GPGPUManager from 'gpgpu/GPGPUManager.js';
 import GPUDFT from 'gpgpu/GPUDFT.js';
 import GPUFFT from 'gpgpu/GPUFFT.js';
@@ -16,7 +17,8 @@ class SynthApp extends React.Component {
         this.sound = null;
     }
     componentDidMount(){
-        UnitTestsManager.runAllTests();
+        //UnitTestsManager.runAllTests();
+        FFTTimingTestManager.run();
     }
     handleSoundUpload(data){
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
