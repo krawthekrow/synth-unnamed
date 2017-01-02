@@ -23,7 +23,8 @@ class GPGPUKernel{
 
 class GPGPUManager{
     constructor(stateManager = null, useFloat = true){
-        if(stateManager == null){
+        this.embeddedStateManager = stateManager == null;
+        if(this.embeddedStateManager){
             stateManager = GPGPUManager.createWebGLStateManager();
         }
         this.stateManager = stateManager;
@@ -33,12 +34,15 @@ class GPGPUManager{
         if(this.useFloat){
             this.ctx.getExtension('OES_texture_float');
         }
-
-        this.quadPosBuff = this.createStaticArrBuff(this.ctx.ARRAY_BUFFER, QuadDrawingUtils.QUAD_POS_ARR);
-        this.quadIndexBuff = this.createStaticArrBuff(this.ctx.ELEMENT_ARRAY_BUFFER, QuadDrawingUtils.QUAD_INDEX_ARR);
     }
     get ctx(){
         return this.stateManager.ctx;
+    }
+    get quadPosBuff(){
+        return this.stateManager.getQuadPosBuff();
+    }
+    get quadIndexBuff(){
+        return this.stateManager.getQuadIndexBuff();
     }
     static createGPGPUCanvasContext(canvas = null){
         if(canvas == null){
@@ -56,12 +60,6 @@ class GPGPUManager{
         return new WebGLStateManager(
             this.createGPGPUCanvasContext(canvas)
         );
-    }
-    createStaticArrBuff(type, contents){
-        const buff = this.ctx.createBuffer();
-        this.ctx.bindBuffer(type, buff);
-        this.ctx.bufferData(type, contents, this.ctx.STATIC_DRAW);
-        return buff;
     }
     createComputeTexture(dims, type = this.ctx.FLOAT, contents = null, format = this.ctx.RGBA){
         const tex = this.ctx.createTexture();
@@ -112,12 +110,6 @@ class GPGPUManager{
             else if(/^vec[2-4]$/g.test(uniform.type)){
                 this.ctx['uniform' + uniform.type[3].toString() + 'fv'](uniformLoc, new Float32Array(vals[uniform.name]));
             }
-        });
-    }
-    bindTextures(textures){
-        textures.forEach((texture, i) => {
-            this.ctx.activeTexture(this.ctx['TEXTURE' + i.toString()]);
-            this.ctx.bindTexture(this.ctx.TEXTURE_2D, texture);
         });
     }
     drawQuad(program){
@@ -267,12 +259,12 @@ gl_FragData[0] = ` + placeCode + `;
         const fbo = drawDirect ? null : this.createFBO(outputTextures);
         this.ctx.bindFramebuffer(this.ctx.FRAMEBUFFER, fbo);
 
-        this.bindTextures(inputArrs.map(gpuArr => gpuArr.tex));
+        ShaderUtils.bindTextures(this.ctx, inputArrs.map(gpuArr => gpuArr.tex));
 
         this.ctx.viewport(0, 0, outputDims.width, outputDims.height);
         this.drawQuad(kernel.program);
 
-        this.ctx.deleteFramebuffer(fbo);
+        if(fbo != null) this.ctx.deleteFramebuffer(fbo);
 
         return outputTextures.map(tex =>
             new GPUArray(outputDims, tex)
@@ -280,6 +272,10 @@ gl_FragData[0] = ` + placeCode + `;
     }
     disposeKernel(kernel){
         ShaderUtils.disposeProgram(this.ctx, kernel.programInfo);
+    }
+    dispose(){
+        if(this.embeddedStateManager)
+            this.stateManager.dispose();
     }
 };
 

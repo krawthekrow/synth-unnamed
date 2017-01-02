@@ -4,7 +4,7 @@ import SoundUploader from 'reactComponents/SoundUploader.jsx';
 import SpectrogramCanvas from 'reactComponents/SpectrogramCanvas.jsx';
 import Canvas from 'reactComponents/Canvas.jsx';
 import TestCanvas from 'reactComponents/TestCanvas.jsx';
-import {Utils, Dimensions} from 'utils/Utils.js';
+import {Utils, Dimensions, Vector, Rect} from 'utils/Utils.js';
 import UnitTestsManager from 'tests/UnitTestsManager.js';
 import FFTTimingTestManager from 'tests/FFTTimingTestManager.js';
 import GPGPUManager from 'gpgpu/GPGPUManager.js';
@@ -12,12 +12,14 @@ import GPUDFT from 'gpgpu/GPUDFT.js';
 import GPUFFT from 'gpgpu/GPUFFT.js';
 import GPUSTFT from 'gpgpu/GPUSTFT.js';
 import SpectrogramKernel from 'engine/SpectrogramKernel.js';
+import QuadDrawingKernel from 'webgl/QuadDrawingKernel.js';
 
 class SynthApp extends React.Component {
     constructor(props){
         super(props);
         this.sound = null;
         this.webglStateManager = null;
+        this.CANVAS_DIMS = new Dimensions(1800, 1024);
     }
     componentDidMount(){
         UnitTestsManager.runAllTests();
@@ -48,13 +50,16 @@ class SynthApp extends React.Component {
         const spectroKernel = new SpectrogramKernel(this.gpgpuManager);
         const spectro = spectroKernel.run(bufferView, 2048, 5, 2, 2048);
         spectroKernel.dispose();
+
+        const quadKernel = new QuadDrawingKernel(this.webglStateManager);
+        quadKernel.run(spectro.tex, new Rect(
+            new Vector(0, 0),
+            spectro.dims
+        ), this.CANVAS_DIMS);
+        quadKernel.dispose();
         
-        const spectroImgBuff = new Uint8ClampedArray(
-            this.gpgpuManager.gpuArrToFlatArr(spectro, true)
-        );
-        const spectroImgData = this.spectroCanvas.ctx.createImageData(spectro.dims.width, spectro.dims.height);
-        spectroImgData.data.set(spectroImgBuff);
-        this.spectroCanvas.ctx.putImageData(spectroImgData, 0, 0);
+        this.gpgpuManager.disposeGPUArr(spectro);
+
         console.log('Done.');
     }
     render(){
@@ -62,7 +67,7 @@ class SynthApp extends React.Component {
 <div>
     <SoundUploader onUpload={data => this.handleSoundUpload(data)} />
     {/*<TestCanvas />*/}
-    <canvas key='mainCanvas' width='1800' height='1024' ref={canvas => {this.mainCanvas = canvas;}} />
+    <canvas key='mainCanvas' width={this.CANVAS_DIMS.width} height={this.CANVAS_DIMS.height} ref={canvas => {this.mainCanvas = canvas;}} />
     <SpectrogramCanvas ref={canvas => {this.spectroCanvas = canvas;}} />
 </div>
         );

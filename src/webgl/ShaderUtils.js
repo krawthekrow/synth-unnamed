@@ -32,10 +32,20 @@ class ShaderUtils{
             ctx.uniform1i(texLoc, i);
         });
     }
+    static registerVectorUniform(ctx, program, uniformName, val){
+        const uniformLoc = ctx.getUniformLocation(program, uniformName);
+        ctx.uniform2fv(uniformLoc, val.toArray());
+    }
     static setVertAttrib(ctx, program, attribName, itemSize, buff){
         const attrib = ctx.getAttribLocation(program, attribName);
         ctx.bindBuffer(ctx.ARRAY_BUFFER, buff);
         ctx.vertexAttribPointer(attrib, itemSize, ctx.FLOAT, false, 0, 0);
+    }
+    static bindTextures(ctx, textures){
+        textures.forEach((texture, i) => {
+            ctx.activeTexture(ctx['TEXTURE' + i.toString()]);
+            ctx.bindTexture(ctx.TEXTURE_2D, texture);
+        });
     }
     static disposeProgram(ctx, programInfo){
         ctx.detachShader(programInfo.program, programInfo.vertShader);

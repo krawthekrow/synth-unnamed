@@ -88,6 +88,7 @@ class GPGPUUnitTests{
                     )
                 );
             })();
+            manager.dispose();
         })();
         (() => {
             const manager = new GPGPUManager(stateManager, false);
@@ -193,6 +194,7 @@ gl_FragData[1] = packFloat(
                 manager.disposeGPUArr(gpuArr1);
                 manager.disposeGPUArr(gpuArr2);
             })();
+            manager.dispose();
         })();
         (() => {
             const manager = new GPGPUManager(stateManager, true);
@@ -208,6 +210,7 @@ gl_FragData[1] = packFloat(
                     TestUtils.compareArray2D(randArr, resArr, TestUtils.floatEquals)
                 );
             })();
+            manager.dispose();
         })();
     }
 };
@@ -239,6 +242,8 @@ class FFTUnitTests{
             'GPU FFT packed vs float',
             TestUtils.compareArray2D(fftArr, fftFloatArr, (x, y) => TestUtils.floatEquals(x, y, 1e-3))
         );
+        manager.dispose();
+        managerFloat.dispose();
     }
 };
 
@@ -274,6 +279,7 @@ class STFTUnitTests{
             'Manual vs GPU STFT',
             TestUtils.compareArray2D(manualResArr, resArr, (x, y) => TestUtils.floatEquals(x, y, 1e-3))
         );
+        gpgpuManager.dispose();
     }
 };
 
@@ -286,6 +292,7 @@ class SpectrogramUnitTests{
         const gpuSTFT = new GPUSTFT(gpgpuManager);
         const spectrum = gpuSTFT.stft(data, windSz);
         gpuSTFT.dispose();
+        gpgpuManager.dispose();
         
         return Utils.flatten(Utils.flatten(
             spectrum.data.slice(0, halfWindSz)
@@ -312,8 +319,9 @@ class SpectrogramUnitTests{
         manager.disposeGPUArr(resGPUArr);
         TestUtils.processTestResult(
             'Manual vs GPU spectrogram',
-            TestUtils.compareArrays(expectedArr, resArr, (x, y) => TestUtils.floatEquals(x, y, 1e-2))
+            TestUtils.compareArrays(expectedArr, resArr, (x, y) => TestUtils.floatEquals(x, y, 1e-1))
         );
+        manager.dispose();
     }
 };
 

@@ -42,6 +42,8 @@ class FFTTimingTestManager{
             gpuDFT.dispose();
             gpuFFT.dispose();
             console.log('DFT: ' + Math.floor(dftTime).toString() + 'ms; FFT (packed): ' + Math.floor(fftTime).toString() + 'ms; FFT (float): ' + Math.floor(fftFloatTime).toString() + 'ms.');
+            manager.dispose();
+            managerFloat.dispose();
         });
         eventLoop.start();
     }
