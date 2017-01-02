@@ -10,6 +10,7 @@ import FFTTimingTestManager from 'tests/FFTTimingTestManager.js';
 import GPGPUManager from 'gpgpu/GPGPUManager.js';
 import GPUDFT from 'gpgpu/GPUDFT.js';
 import GPUFFT from 'gpgpu/GPUFFT.js';
+import GPUSTFT from 'gpgpu/GPUSTFT.js';
 
 class SynthApp extends React.Component {
     constructor(props){
@@ -17,7 +18,7 @@ class SynthApp extends React.Component {
         this.sound = null;
     }
     componentDidMount(){
-        //UnitTestsManager.runAllTests();
+        UnitTestsManager.runAllTests();
         //FFTTimingTestManager.run();
     }
     handleSoundUpload(data){
@@ -38,11 +39,19 @@ class SynthApp extends React.Component {
         this.sound = buffer;
         const bufferView = this.sound.getChannelData(0);
         const fullLength = this.sound.length;
-        const windSz = 1024;
+        const windSz = 2048;
         const halfWindSz = windSz / 2;
         const numWind = parseInt(fullLength / halfWindSz) - 1;
 
-        const spectroDims = new Dimensions(/*numWind*/1024, halfWindSz);
+        const gpgpuManager = new GPGPUManager(null, true);
+        const gpuSTFT = new GPUSTFT(gpgpuManager);
+        const wrapWidth = 2048;
+        const truncBuff = new Float32Array(bufferView.buffer, wrapWidth * 128);
+        const spectrum = gpuSTFT.stft(truncBuff, windSz, false, false, wrapWidth).data.slice(halfWindSz, windSz);
+        gpuSTFT.dispose();
+
+        /*
+        const spectroDims = new Dimensions(numWind, halfWindSz);
         const windFunc = Utils.compute1DArray(windSz,
             i => 0.5 * (1 - Math.cos(2 * Math.PI * i / (windSz - 1)))
         );
@@ -50,10 +59,11 @@ class SynthApp extends React.Component {
             new Dimensions(spectroDims.width, windSz),
             pos => bufferView[pos.x * windSz + pos.y] * windFunc[pos.y]
         );
-        const gpgpuManager = new GPGPUManager(null, false);
+        const gpgpuManager = new GPGPUManager(null, true);
         const gpuFFT = new GPUFFT(gpgpuManager);
         const spectrum = gpuFFT.parallelFFT(dftInput).data.slice(halfWindSz, windSz);
         gpuFFT.dispose();
+        */
         const maxMag = 5;
         const flatSpectrum = Utils.flatten(Utils.flatten(spectrum).map(mag => [
             Math.floor(Utils.clamp(Math.log(mag) + 10, 0, maxMag) / maxMag * 256),

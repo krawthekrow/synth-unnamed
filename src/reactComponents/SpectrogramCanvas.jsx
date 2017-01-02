@@ -6,7 +6,7 @@ class SpectrogramCanvas extends React.Component{
     }
     render(){
         return (
-<canvas width="1500" height="500" style={{
+<canvas width="1500" height="2048" style={{
 }} ref={canvas => {this.canvas = canvas;}} />
         );
     }

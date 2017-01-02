@@ -8,11 +8,10 @@ class GPUArray{
 };
 
 class WebGLProgramInfo{
-    constructor(program, vertShader, fragShader, attribs = []){
+    constructor(program, vertShader, fragShader){
         this.program = program;
         this.vertShader = vertShader;
         this.fragShader = fragShader;
-        this.attribs = attribs;
     }
 };
 
@@ -40,6 +39,8 @@ class GPGPUManager{
         if(this.useFloat){
             this.ctx.getExtension('OES_texture_float');
         }
+
+        this.numAttribsEnabled = 0;
 
         this.quadPosBuff = this.createStaticArrBuff(this.ctx.ARRAY_BUFFER, GPGPUManager.FULLSCREEN_QUAD_POS_ARR);
         this.quadIndexBuff = this.createStaticArrBuff(this.ctx.ELEMENT_ARRAY_BUFFER, GPGPUManager.FULLSCREEN_QUAD_INDEX_ARR);
@@ -117,7 +118,6 @@ class GPGPUManager{
     }
     registerVertAttrib(program, attribName, itemSize, buff){
         const attrib = this.ctx.getAttribLocation(program, attribName);
-        this.ctx.enableVertexAttribArray(attrib);
         this.ctx.bindBuffer(this.ctx.ARRAY_BUFFER, buff);
         this.ctx.vertexAttribPointer(attrib, itemSize, this.ctx.FLOAT, false, 0, 0);
         return attrib;
@@ -151,22 +151,36 @@ class GPGPUManager{
             this.ctx.bindTexture(this.ctx.TEXTURE_2D, texture);
         });
     }
+    enableAttribs(numAttribs){
+        while(this.numAttribsEnabled > numAttribs){
+            this.numAttribsEnabled--;
+            this.ctx.disableVertexAttribArray(this.numAttribsEnabled);
+        }
+        while(this.numAttribsEnabled < numAttribs){
+            this.ctx.enableVertexAttribArray(this.numAttribsEnabled);
+            this.numAttribsEnabled++;
+        }
+    }
     drawQuad(program){
         this.ctx.useProgram(program);
         this.ctx.bindBuffer(this.ctx.ELEMENT_ARRAY_BUFFER, this.quadIndexBuff);
+        this.enableAttribs(1);
         this.ctx.drawElements(this.ctx.TRIANGLE_STRIP, GPGPUManager.FULLSCREEN_QUAD_NUM_VERT, this.ctx.UNSIGNED_SHORT, 0);
     }
     disposeGPUArr(gpuArr){
         this.ctx.deleteTexture(gpuArr.tex);
     }
-    flatArrToGPUArr(arr, dims, numChannels = 4){
-        if(!this.useFloat && numChannels != 4) throw 'Packed float arrays require 4 channels.';
-        let format = null;
-        if(numChannels === 1) format = this.ctx.ALPHA;
+    numChannelsToFormat(numChannels){
+        if(numChannels === 1) return this.ctx.ALPHA;
         else if(numChannels === 2) throw 'WebGL 1.0 does not support RG textures.';
-        else if(numChannels === 3) format = this.ctx.RGB;
-        else if(numChannels === 4) format = this.ctx.RGBA;
+        else if(numChannels === 3) return this.ctx.RGB;
+        else if(numChannels === 4) return this.ctx.RGBA;
         else throw 'Unsupported number of channels.';
+    }
+    flatArrToGPUArr(arr, dims, numChannels = 4){
+        if(!this.useFloat && numChannels != 4)
+            throw 'Packed float arrays require 4 channels.';
+        const format = this.numChannelsToFormat(numChannels);
         const floatArr = new Float32Array(arr);
         return new GPUArray(
             dims,
@@ -174,9 +188,8 @@ class GPGPUManager{
         );
     }
     arrToGPUArr(arr, singleChannel = true){
-        if(!this.useFloat && !singleChannel){
-            console.log('Cannot pack multiple packed float channels.');
-        }
+        if(!this.useFloat && !singleChannel)
+            throw 'Cannot pack multiple packed float channels.';
         const pixelFlatArr = Utils.flatten(arr.data);
         const flatArr = this.useFloat ? Utils.flatten(
             singleChannel ?
@@ -185,10 +198,7 @@ class GPGPUManager{
         ) : pixelFlatArr;
         return this.flatArrToGPUArr(flatArr, arr.dims);
     }
-    gpuArrToArr(gpuArr, singleChannel = true){
-        if(!this.useFloat && !singleChannel){
-            console.log('Cannot pack multiple packed float channels.');
-        }
+    gpuArrToFlatArr(gpuArr){
         const fbo = this.createFBO([gpuArr.tex]);
         this.ctx.bindFramebuffer(this.ctx.FRAMEBUFFER, fbo);
         const buffLen = gpuArr.dims.getArea() * 4;
@@ -197,7 +207,17 @@ class GPGPUManager{
             new Uint8Array(buffLen);
         this.ctx.readPixels(0, 0, gpuArr.dims.width, gpuArr.dims.height, this.ctx.RGBA, this.useFloat ? this.ctx.FLOAT : this.ctx.UNSIGNED_BYTE, buff);
         this.ctx.deleteFramebuffer(fbo);
-        const flatArr = new Float32Array(buff.buffer);
+        return this.useFloat ? buff : new Float32Array(buff.buffer);
+    }
+    gpuArrToArr(gpuArr, singleChannel = true, numTexChannels = 4){
+        if(!this.useFloat && !singleChannel)
+            throw 'Cannot pack multiple packed float channels.';
+        if(!this.useFloat && numTexChannels != 4)
+            throw 'Packed float arrays require 4 channels.';
+        const copyArr = numTexChannels != 4;
+        if(copyArr) gpuArr = this.copyGPUArr(gpuArr, numTexChannels, 4);
+        const flatArr = this.gpuArrToFlatArr(gpuArr);
+        if(copyArr) this.disposeGPUArr(gpuArr);
         const arrData = Utils.compute2DArray(gpuArr.dims, pos => {
             const offset = pos.y * gpuArr.dims.width + pos.x;
             return this.useFloat ? (
@@ -208,10 +228,37 @@ class GPGPUManager{
         });
         return new Array2D(gpuArr.dims, arrData);
     }
+    createCopyKernel(srcNumChannels = 4, destNumChannels = srcNumChannels){
+        if(!this.useFloat && (srcNumChannels != 4 || destNumChannels != 4))
+            throw 'Packed float arrays require 4 channels.';
+        let extractCode = null, placeCode = null;
+        if(srcNumChannels == 1)
+            extractCode = 'vec4(texture2D(uArr, vCoord).a, 0.0, 0.0, 0.0)';
+        else if(srcNumChannels === 2) throw 'WebGL 1.0 does not support RG textures.';
+        else if(srcNumChannels === 3 || srcNumChannels === 4)
+            extractCode = 'texture2D(uArr, vCoord)';
+        else throw 'Unsupported number of channels.';
+        if(destNumChannels == 1)
+            placeCode = 'vec4(0.0, 0.0, 0.0, data.r)';
+        else if(destNumChannels === 2) throw 'WebGL 1.0 does not support RG textures.';
+        else if(destNumChannels === 3 || destNumChannels == 4)
+            placeCode = 'data';
+        else throw 'Unsupported number of channels.';
+        return this.createKernel(
+`vec4 data = ` + extractCode + `;
+gl_FragData[0] = ` + placeCode + `;
+`,
+        ['uArr'], [], 1);
+    }
+    copyGPUArr(gpuArr, srcNumChannels = 4, destNumChannels = srcNumChannels){
+        const copyKernel = this.createCopyKernel(srcNumChannels, destNumChannels);
+        const resGPUArr = this.runKernel(copyKernel, [
+            gpuArr
+        ], gpuArr.dims)[0];
+        this.disposeKernel(copyKernel);
+        return resGPUArr;
+    }
     disposeProgram(programInfo){
-        programInfo.attribs.forEach(attrib => {
-            this.ctx.disableVertexAttribArray(attrib);
-        });
         this.ctx.detachShader(programInfo.program, programInfo.vertShader);
         this.ctx.detachShader(programInfo.program, programInfo.fragShader);
         this.ctx.deleteShader(programInfo.vertShader);
@@ -240,9 +287,7 @@ class GPGPUManager{
         const program = programInfo.program;
 
         this.ctx.useProgram(program);
-        programInfo.attribs.push(
-            this.registerVertAttrib(program, 'aPos', 2, this.quadPosBuff)
-        );
+        this.registerVertAttrib(program, 'aPos', 2, this.quadPosBuff)
         this.registerTextures(program, inputNames);
         return new GPGPUKernel(programInfo, params, numOutputs, isGraphical);
     }
@@ -421,8 +466,8 @@ precision highp sampler2D;
 `
 varying vec2 vCoord;
 
-vec4 arrGet(sampler2D arr, ivec2 id){
-    return texture2D(arr, (vec2(id) + vec2(0.5)) / vec2(uDims));
+vec4 arrGet(sampler2D arr, ivec2 id, ivec2 dims){
+    return texture2D(arr, (vec2(id) + vec2(0.5)) / vec2(dims));
 }
 
 `,

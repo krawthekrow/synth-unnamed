@@ -2,8 +2,12 @@ import GPGPUManager from 'gpgpu/GPGPUManager.js';
 import {Dimensions, Utils} from 'utils/Utils.js';
 import GPUDFT from 'gpgpu/GPUDFT.js';
 import GPUFFT from 'gpgpu/GPUFFT.js';
+import GPUSTFT from 'gpgpu/GPUSTFT.js';
 
 class TestUtils{
+    static compareArrays(arr1, arr2, cmpFunc = TestUtils.defaultEquals){
+        return arr1.every((val, i) => cmpFunc(val, arr2[i]));
+    }
     static compareArray2D(arr1, arr2, cmpFunc = TestUtils.defaultEquals){
         if(!arr1.dims.equals(arr2.dims)){
             return false;
@@ -189,18 +193,10 @@ gl_FragData[1] = packFloat(
                     Utils.flatten(randArr.data),
                     randArr.dims, 1
                 );
-                const aToRKernel = manager.createKernel(
-`gl_FragData[0] = vec4(texture2D(uArr, vCoord).a, 0.0, 0.0, 0.0);
-`,
-                ['uArr'], [], 1);
-                const resGPUArr = manager.runKernel(aToRKernel, [
-                    gpuArr
-                ], testDims)[0];
-                manager.disposeKernel(aToRKernel);
-                const resArr = manager.gpuArrToArr(resGPUArr);
-                manager.disposeGPUArr(resGPUArr);
+                const resArr = manager.gpuArrToArr(gpuArr, true, 1);
+                manager.disposeGPUArr(gpuArr);
                 TestUtils.processTestResult(
-                    'Data transfer (float, flat alpha)',
+                    'Kernel-based data transfer (float, flat alpha)',
                     TestUtils.compareArray2D(randArr, resArr, TestUtils.floatEquals)
                 );
             })();
@@ -238,10 +234,46 @@ class FFTUnitTests{
     }
 };
 
+class STFTUnitTests{
+    static manualSTFT(gpgpuManager, arr, windSz){
+        const numWind = parseInt(arr.length / (windSz / 2)) - 1;
+        const spectroDims = new Dimensions(numWind, windSz / 2);
+        const windFunc = Utils.compute1DArray(windSz,
+            i => 0.5 * (1 - Math.cos(2 * Math.PI * i / (windSz - 1)))
+        );
+        const fftInput = Utils.compute2DArrayAsArray2D(
+            new Dimensions(spectroDims.width, windSz),
+            pos => arr[pos.x * (windSz / 2) + pos.y] * windFunc[pos.y]
+        );
+        const gpuFFT = new GPUFFT(gpgpuManager);
+        const spectrum = gpuFFT.parallelFFT(fftInput);
+        gpuFFT.dispose();
+        return spectrum;
+    }
+    static run(){
+        const gpgpuManager = new GPGPUManager(null, true);
+        const gpuSTFT = new GPUSTFT(gpgpuManager);
+        const testLength = 128;
+        const windSz = 16;
+        const randArr = Utils.compute1DArray(
+            testLength,
+            i => Math.random()
+        );
+        const resArr = gpuSTFT.stft(randArr, windSz);
+        const manualResArr = STFTUnitTests.manualSTFT(gpgpuManager, randArr, windSz);
+        gpuSTFT.dispose();
+        TestUtils.processTestResult(
+            'Manual vs GPU STFT',
+            TestUtils.compareArray2D(manualResArr, resArr, (x, y) => TestUtils.floatEquals(x, y, 1e-3))
+        );
+    }
+};
+
 class UnitTestsManager{
     static runAllTests(){
         GPGPUUnitTests.run();
         FFTUnitTests.run();
+        STFTUnitTests.run();
     }
 };
 
