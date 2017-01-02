@@ -1,3 +1,4 @@
+import WebGLStateManager from 'webgl/WebGLStateManager.js';
 import GPGPUManager from 'gpgpu/GPGPUManager.js';
 import {Utils, Dimensions} from 'utils/Utils.js';
 import EventLoop from 'utils/EventLoop.js';
@@ -6,9 +7,9 @@ import GPUFFT from 'gpgpu/GPUFFT.js';
 
 class FFTTimingTestManager{
     static run(){
-        const ctx = GPGPUManager.createGPGPUCanvasContext();
-        const manager = new GPGPUManager(ctx, false);
-        const managerFloat = new GPGPUManager(ctx, true);
+        const stateManager = GPGPUManager.createWebGLStateManager();
+        const manager = new GPGPUManager(stateManager, false);
+        const managerFloat = new GPGPUManager(stateManager, true);
         const testDims = new Dimensions(500, 2048);
         const randArr = Utils.compute2DArrayAsArray2D(
             testDims,

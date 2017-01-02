@@ -1,12 +1,20 @@
+import WebGLStateManager from 'webgl/WebGLStateManager.js';
 import GPGPUManager from 'gpgpu/GPGPUManager.js';
 import {Dimensions, Utils} from 'utils/Utils.js';
 import GPUDFT from 'gpgpu/GPUDFT.js';
 import GPUFFT from 'gpgpu/GPUFFT.js';
 import GPUSTFT from 'gpgpu/GPUSTFT.js';
+import SpectrogramKernel from 'engine/SpectrogramKernel.js';
 
 class TestUtils{
     static compareArrays(arr1, arr2, cmpFunc = TestUtils.defaultEquals){
-        return arr1.every((val, i) => cmpFunc(val, arr2[i]));
+        //const badIndex = arr1.findIndex((val, i) => !cmpFunc(val, arr2[i]));
+        //if(badIndex != -1){
+        //    console.log(
+        //        badIndex.toString() + ' ' + arr1[badIndex].toString() + ' ' + arr2[badIndex].toString()
+        //    );
+        //}
+        return arr1.length == arr2.length && arr1.every((val, i) => cmpFunc(val, arr2[i]));
     }
     static compareArray2D(arr1, arr2, cmpFunc = TestUtils.defaultEquals){
         if(!arr1.dims.equals(arr2.dims)){
@@ -30,8 +38,8 @@ class TestUtils{
         const absY = Math.abs(y);
         const diff = Math.abs(x - y);
         if(x == y) return true;
-        if(x == 0 || y == 0 || diff < atol) return true;
-        return diff / (absX + absY) < rtol;
+        if(x == 0 || y == 0) return diff < atol;
+        return diff < atol || diff / (absX + absY) < rtol;
     }
     static processTestResult(testName, assertVal){
         //console.log(assertVal);
@@ -42,7 +50,7 @@ class TestUtils{
 
 class GPGPUUnitTests{
     static run(){
-        const ctx = GPGPUManager.createGPGPUCanvasContext();
+        const stateManager = GPGPUManager.createWebGLStateManager();
         const testDims = new Dimensions(5, 6);
         const randArr = Utils.compute2DArrayAsArray2D(
             testDims,
@@ -59,7 +67,7 @@ class GPGPUUnitTests{
             return resArr;
         };
         (() => {
-            const manager = new GPGPUManager(ctx, true);
+            const manager = new GPGPUManager(stateManager, true);
             (() => {
                 const resArr = toGPUAndBack(manager, randArr);
                 TestUtils.processTestResult(
@@ -82,7 +90,7 @@ class GPGPUUnitTests{
             })();
         })();
         (() => {
-            const manager = new GPGPUManager(ctx, false);
+            const manager = new GPGPUManager(stateManager, false);
             (() => {
                 const resArr = toGPUAndBack(manager, randArr);
                 TestUtils.processTestResult(
@@ -187,7 +195,7 @@ gl_FragData[1] = packFloat(
             })();
         })();
         (() => {
-            const manager = new GPGPUManager(ctx, true);
+            const manager = new GPGPUManager(stateManager, true);
             (() => {
                 const gpuArr = manager.flatArrToGPUArr(
                     Utils.flatten(randArr.data),
@@ -206,9 +214,9 @@ gl_FragData[1] = packFloat(
 
 class FFTUnitTests{
     static run(){
-        const ctx = GPGPUManager.createGPGPUCanvasContext();
-        const manager = new GPGPUManager(ctx, false);
-        const managerFloat = new GPGPUManager(ctx, true);
+        const stateManager = GPGPUManager.createWebGLStateManager();
+        const manager = new GPGPUManager(stateManager, false);
+        const managerFloat = new GPGPUManager(stateManager, true);
         const testDims = new Dimensions(1, 128);
         const randArr = Utils.compute2DArrayAsArray2D(
             testDims,
@@ -269,11 +277,52 @@ class STFTUnitTests{
     }
 };
 
+class SpectrogramUnitTests{
+    static manualSpectrogram(data, windSz, magRange, magOffset, wrapWidth = windSz / 2){
+        const halfWindSz = windSz / 2;
+        const numWind = parseInt(data.length / halfWindSz) - 1;
+
+        const gpgpuManager = new GPGPUManager(null, true);
+        const gpuSTFT = new GPUSTFT(gpgpuManager);
+        const spectrum = gpuSTFT.stft(data, windSz);
+        gpuSTFT.dispose();
+        
+        return Utils.flatten(Utils.flatten(
+            spectrum.data.slice(0, halfWindSz)
+        ).map(mag => [
+            Utils.clamp(Math.log(mag) / magRange + magOffset, 0, 1),
+            0, 0, 1
+        ]));
+    }
+    static run(){
+        const testLength = 128;
+        const randArr = Utils.compute1DArray(
+            testLength,
+            i => Math.random()
+        );
+        const windSz = 8, magRange = 5, magOffset = 1;
+        const expectedArr = SpectrogramUnitTests.manualSpectrogram(randArr, windSz, magRange, magOffset);
+        const manager = new GPGPUManager(null, true);
+        const spectroKernel = new SpectrogramKernel(manager);
+        const resGPUArr = spectroKernel.run(randArr, windSz, magRange, magOffset);
+        spectroKernel.dispose();
+        const resArr = Array.from(manager.gpuArrToFlatArr(resGPUArr, true)).map(
+            val => val / 255
+        );
+        manager.disposeGPUArr(resGPUArr);
+        TestUtils.processTestResult(
+            'Manual vs GPU spectrogram',
+            TestUtils.compareArrays(expectedArr, resArr, (x, y) => TestUtils.floatEquals(x, y, 1e-2))
+        );
+    }
+};
+
 class UnitTestsManager{
     static runAllTests(){
         GPGPUUnitTests.run();
         FFTUnitTests.run();
         STFTUnitTests.run();
+        SpectrogramUnitTests.run();
     }
 };
 

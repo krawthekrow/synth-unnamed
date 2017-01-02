@@ -11,6 +11,7 @@ import GPGPUManager from 'gpgpu/GPGPUManager.js';
 import GPUDFT from 'gpgpu/GPUDFT.js';
 import GPUFFT from 'gpgpu/GPUFFT.js';
 import GPUSTFT from 'gpgpu/GPUSTFT.js';
+import SpectrogramKernel from 'engine/SpectrogramKernel.js';
 
 class SynthApp extends React.Component {
     constructor(props){
@@ -18,7 +19,7 @@ class SynthApp extends React.Component {
         this.sound = null;
     }
     componentDidMount(){
-        //UnitTestsManager.runAllTests();
+        UnitTestsManager.runAllTests();
         //FFTTimingTestManager.run();
     }
     handleSoundUpload(data){
@@ -38,28 +39,18 @@ class SynthApp extends React.Component {
     setSound(buffer){
         this.sound = buffer;
         const bufferView = this.sound.getChannelData(0);
-        const fullLength = this.sound.length;
-        const windSz = 2048;
-        const halfWindSz = windSz / 2;
-        const numWind = parseInt(fullLength / halfWindSz) - 1;
 
-        const gpgpuManager = new GPGPUManager(null, true);
-        const gpuSTFT = new GPUSTFT(gpgpuManager);
         const wrapWidth = 2048;
         const truncBuff = new Float32Array(bufferView.buffer, 0, wrapWidth * 256);
-        const spectrum = gpuSTFT.stft(truncBuff, windSz, false, false, wrapWidth);
-        gpuSTFT.dispose();
-
-        const maxMag = 5;
-        const flatSpectrum = Utils.flatten(Utils.flatten(
-            spectrum.data.slice(halfWindSz, windSz)
-        ).map(mag => [
-            Math.floor(Utils.clamp(Math.log(mag) + 10, 0, maxMag) / maxMag * 256),
-            0, 0, 255
-        ]));
+        const gpgpuManager = new GPGPUManager(null, true);
+        const spectroKernel = new SpectrogramKernel(gpgpuManager);
+        const spectro = spectroKernel.run(truncBuff, 2048, 5, 2, 2048);
+        spectroKernel.dispose();
         
-        const spectroImgBuff = new Uint8ClampedArray(flatSpectrum);
-        const spectroImgData = this.spectroCanvas.ctx.createImageData(spectrum.dims.width, spectrum.dims.height / 2);
+        const spectroImgBuff = new Uint8ClampedArray(
+            gpgpuManager.gpuArrToFlatArr(spectro, true)
+        );
+        const spectroImgData = this.spectroCanvas.ctx.createImageData(spectro.dims.width, spectro.dims.height);
         spectroImgData.data.set(spectroImgBuff);
         this.spectroCanvas.ctx.putImageData(spectroImgData, 0, 0);
         //this.spectroCanvas.ctx.drawImage(this.spectroCanvas.ctx.canvas, 0, 0, this.spectroCanvas.ctx.canvas.width * 2, this.spectroCanvas.ctx.canvas.height * 2);
@@ -70,8 +61,8 @@ class SynthApp extends React.Component {
 <div>
     <SoundUploader onUpload={data => this.handleSoundUpload(data)} />
     {/*<TestCanvas />*/}
-    <canvas key='mainCanvas' width='1800' height='1024' ref={canvas => {this.mainCanvas = canvas;}} />
-    {/*<SpectrogramCanvas ref={canvas => {this.spectroCanvas = canvas;}} />*/}
+    {/*<canvas key='mainCanvas' width='1800' height='1024' ref={canvas => {this.mainCanvas = canvas;}} />*/}
+    <SpectrogramCanvas ref={canvas => {this.spectroCanvas = canvas;}} />
 </div>
         );
     }

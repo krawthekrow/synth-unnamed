@@ -1,5 +1,7 @@
 import ShaderUtils from 'webgl/ShaderUtils.js';
+import QuadDrawingUtils from 'webgl/QuadDrawingUtils.js';
 import {Array2D, Utils} from 'utils/Utils.js';
+import WebGLStateManager from 'webgl/WebGLStateManager.js';
 
 class GPUArray{
     constructor(dims, tex){
@@ -9,10 +11,11 @@ class GPUArray{
 };
 
 class GPGPUKernel{
-    constructor(programInfo, params = [], numOutputs = 1, isGraphical = false){
+    constructor(programInfo, params = [], numOutputs = 1, colorOutput = false, isGraphical = false){
         this.programInfo = programInfo;
         this.params = params;
         this.numOutputs = numOutputs;
+        this.colorOutput = colorOutput;
         this.isGraphical = isGraphical;
     }
     get program(){
@@ -21,11 +24,11 @@ class GPGPUKernel{
 };
 
 class GPGPUManager{
-    constructor(ctx = null, useFloat = true){
-        if(ctx == null){
-            ctx = GPGPUManager.createGPGPUCanvasContext();
+    constructor(stateManager = null, useFloat = true){
+        if(stateManager == null){
+            stateManager = GPGPUManager.createWebGLStateManager();
         }
-        this.ctx = ctx;
+        this.stateManager = stateManager;
         this.useFloat = useFloat;
 
         this.extDB = this.ctx.getExtension('WEBGL_draw_buffers');
@@ -36,7 +39,10 @@ class GPGPUManager{
         this.numAttribsEnabled = 0;
 
         this.quadPosBuff = this.createStaticArrBuff(this.ctx.ARRAY_BUFFER, GPGPUManager.FULLSCREEN_QUAD_POS_ARR);
-        this.quadIndexBuff = this.createStaticArrBuff(this.ctx.ELEMENT_ARRAY_BUFFER, GPGPUManager.FULLSCREEN_QUAD_INDEX_ARR);
+        this.quadIndexBuff = this.createStaticArrBuff(this.ctx.ELEMENT_ARRAY_BUFFER, QuadDrawingUtils.QUAD_INDEX_ARR);
+    }
+    get ctx(){
+        return this.stateManager.ctx;
     }
     static createGPGPUCanvasContext(canvas = null){
         if(canvas == null){
@@ -50,6 +56,11 @@ class GPGPUManager{
         };
         return canvas.getContext('webgl', options) || canvas.getContext('webgl-experimental', options);
     };
+    static createWebGLStateManager(canvas = null){
+        return new WebGLStateManager(
+            this.createGPGPUCanvasContext(canvas)
+        );
+    }
     createStaticArrBuff(type, contents){
         const buff = this.ctx.createBuffer();
         this.ctx.bindBuffer(type, buff);
@@ -125,21 +136,11 @@ class GPGPUManager{
             this.ctx.bindTexture(this.ctx.TEXTURE_2D, texture);
         });
     }
-    enableAttribs(numAttribs){
-        while(this.numAttribsEnabled > numAttribs){
-            this.numAttribsEnabled--;
-            this.ctx.disableVertexAttribArray(this.numAttribsEnabled);
-        }
-        while(this.numAttribsEnabled < numAttribs){
-            this.ctx.enableVertexAttribArray(this.numAttribsEnabled);
-            this.numAttribsEnabled++;
-        }
-    }
     drawQuad(program){
         this.ctx.useProgram(program);
-        this.enableAttribs(1);
+        this.stateManager.enableAttribs(1);
         this.ctx.bindBuffer(this.ctx.ELEMENT_ARRAY_BUFFER, this.quadIndexBuff);
-        this.ctx.drawElements(this.ctx.TRIANGLE_STRIP, GPGPUManager.FULLSCREEN_QUAD_NUM_VERT, this.ctx.UNSIGNED_SHORT, 0);
+        this.ctx.drawElements(this.ctx.TRIANGLE_STRIP, QuadDrawingUtils.QUAD_NUM_VERT, this.ctx.UNSIGNED_SHORT, 0);
     }
     disposeGPUArr(gpuArr){
         this.ctx.deleteTexture(gpuArr.tex);
@@ -172,25 +173,25 @@ class GPGPUManager{
         ) : pixelFlatArr;
         return this.flatArrToGPUArr(flatArr, arr.dims);
     }
-    gpuArrToFlatArr(gpuArr){
+    gpuArrToFlatArr(gpuArr, overrideFloat = false){
         const fbo = this.createFBO([gpuArr.tex]);
         this.ctx.bindFramebuffer(this.ctx.FRAMEBUFFER, fbo);
         const buffLen = gpuArr.dims.getArea() * 4;
-        const buff = this.useFloat ?
+        const buff = (this.useFloat && !overrideFloat) ?
             new Float32Array(buffLen) :
             new Uint8Array(buffLen);
-        this.ctx.readPixels(0, 0, gpuArr.dims.width, gpuArr.dims.height, this.ctx.RGBA, this.useFloat ? this.ctx.FLOAT : this.ctx.UNSIGNED_BYTE, buff);
+        this.ctx.readPixels(0, 0, gpuArr.dims.width, gpuArr.dims.height, this.ctx.RGBA, (this.useFloat && !overrideFloat) ? this.ctx.FLOAT : this.ctx.UNSIGNED_BYTE, buff);
         this.ctx.deleteFramebuffer(fbo);
         return this.useFloat ? buff : new Float32Array(buff.buffer);
     }
-    gpuArrToArr(gpuArr, singleChannel = true, numTexChannels = 4){
+    gpuArrToArr(gpuArr, singleChannel = true, numTexChannels = 4, overrideFloat = false){
         if(!this.useFloat && !singleChannel)
             throw 'Cannot pack multiple packed float channels.';
         if(!this.useFloat && numTexChannels != 4)
             throw 'Packed float arrays require 4 channels.';
         const copyArr = numTexChannels != 4;
         if(copyArr) gpuArr = this.copyGPUArr(gpuArr, numTexChannels, 4);
-        const flatArr = this.gpuArrToFlatArr(gpuArr);
+        const flatArr = this.gpuArrToFlatArr(gpuArr, overrideFloat);
         if(copyArr) this.disposeGPUArr(gpuArr);
         const arrData = Utils.compute2DArray(gpuArr.dims, pos => {
             const offset = pos.y * gpuArr.dims.width + pos.x;
@@ -239,7 +240,7 @@ gl_FragData[0] = ` + placeCode + `;
         this.ctx.deleteShader(programInfo.fragShader);
         this.ctx.deleteProgram(programInfo.program);
     }
-    createKernel(computeFunc, inputNames, params = [], numOutputs = 1, includeSrc = '', isGraphical = false){
+    createKernel(computeFunc, inputNames, params = [], numOutputs = 1, includeSrc = '', colorOutput = false){
         const uniforms = [].concat(params, inputNames.map(
             inputName => ({
                 type: 'sampler2D',
@@ -250,7 +251,7 @@ gl_FragData[0] = ` + placeCode + `;
             type: 'ivec2',
             name: 'uDims'
         }]);
-        const vertShaderSrc = GPGPUManager.createVertShaderSrc(isGraphical);
+        const vertShaderSrc = GPGPUManager.createVertShaderSrc();
         const fragShaderSrc = GPGPUManager.createFragShaderSrc(
             computeFunc.trim().split('\n').map(line =>
                 '    ' + line
@@ -263,7 +264,7 @@ gl_FragData[0] = ` + placeCode + `;
         this.ctx.useProgram(program);
         this.registerVertAttrib(program, 'aPos', 2, this.quadPosBuff)
         this.registerTextures(program, inputNames);
-        return new GPGPUKernel(programInfo, params, numOutputs, isGraphical);
+        return new GPGPUKernel(programInfo, params, numOutputs, colorOutput);
     }
     runKernel(kernel, inputArrs, outputDims, paramVals = {}){
         this.ctx.useProgram(kernel.program);
@@ -276,10 +277,10 @@ gl_FragData[0] = ` + placeCode + `;
         });
 
         const outputTextures = Utils.compute1DArray(kernel.numOutputs, i =>
-            this.createComputeTexture(outputDims, this.useFloat ? this.ctx.FLOAT : this.ctx.UNSIGNED_BYTE)
+            this.createComputeTexture(outputDims, (this.useFloat && !kernel.colorOutput) ? this.ctx.FLOAT : this.ctx.UNSIGNED_BYTE)
         );
 
-        const fbo = this.isGraphical ? null : this.createFBO(outputTextures);
+        const fbo = kernel.isGraphical ? null : this.createFBO(outputTextures);
         this.ctx.bindFramebuffer(this.ctx.FRAMEBUFFER, fbo);
 
         this.bindTextures(inputArrs.map(gpuArr => gpuArr.tex));
@@ -303,12 +304,6 @@ GPGPUManager.FULLSCREEN_QUAD_POS_ARR = new Float32Array([
     1.0, 1.0,
     -1.0, 1.0,
 ]);
-GPGPUManager.FULLSCREEN_QUAD_INDEX_ARR = new Uint16Array([
-    0, 1, 2,
-    0, 2, 3
-]);
-GPGPUManager.FULLSCREEN_QUAD_NUM_VERT = 6;
-
 
 // Credit: https://gist.github.com/TooTallNate/4750953
 GPGPUManager.ENDIANNESS = (() => {
@@ -321,19 +316,10 @@ GPGPUManager.ENDIANNESS = (() => {
     throw new Error('unknown endianness');
 })();
 
-GPGPUManager.createVertShaderSrc = (flipY = false) =>
-`precision highp float;
-
-attribute vec2 aPos;
-
-varying vec2 vCoord;
-
-void main(){
-    gl_Position = vec4(` +
-    (flipY ? `aPos.x, -aPos.y` : `aPos`) +
-    `, 0.0, 1.0);
-    vCoord = (aPos + 1.0) / 2.0;
-}`;
+GPGPUManager.createVertShaderSrc = (isGraphical = false) =>
+    QuadDrawingUtils.createVertShaderSrc(
+        isGraphical ? [QuadDrawingUtils.TRANSFORMS.flipY] : []
+    );
 
 ///
 /// Adapted from gpu.js
@@ -429,8 +415,6 @@ GPGPUManager.createFragShaderSrc = (computeFunc, uniforms, includeSrc = '', useD
 ` : '',
 `precision highp float;
 precision highp sampler2D;
-
-#define EPS 0.0000001
 
 `,
     ...uniforms.map(uniform =>
