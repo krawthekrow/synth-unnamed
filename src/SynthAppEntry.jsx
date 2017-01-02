@@ -18,7 +18,7 @@ class SynthApp extends React.Component {
         this.sound = null;
     }
     componentDidMount(){
-        UnitTestsManager.runAllTests();
+        //UnitTestsManager.runAllTests();
         //FFTTimingTestManager.run();
     }
     handleSoundUpload(data){
@@ -46,8 +46,8 @@ class SynthApp extends React.Component {
         const gpgpuManager = new GPGPUManager(null, true);
         const gpuSTFT = new GPUSTFT(gpgpuManager);
         const wrapWidth = 2048;
-        const truncBuff = new Float32Array(bufferView.buffer, wrapWidth * 128);
-        const spectrum = gpuSTFT.stft(truncBuff, windSz, false, false, wrapWidth).data.slice(halfWindSz, windSz);
+        const truncBuff = new Float32Array(bufferView.buffer, 0, wrapWidth * 128);
+        const spectrum = gpuSTFT.stft(truncBuff, windSz, false, false, wrapWidth);
         gpuSTFT.dispose();
 
         /*
@@ -65,7 +65,9 @@ class SynthApp extends React.Component {
         gpuFFT.dispose();
         */
         const maxMag = 5;
-        const flatSpectrum = Utils.flatten(Utils.flatten(spectrum).map(mag => [
+        const flatSpectrum = Utils.flatten(Utils.flatten(
+            spectrum.data.slice(halfWindSz, windSz)
+        ).map(mag => [
             Math.floor(Utils.clamp(Math.log(mag) + 10, 0, maxMag) / maxMag * 256),
             0, 0, 255
         ]));
@@ -90,7 +92,7 @@ class SynthApp extends React.Component {
         //        spectroImgBuff[pixOffset + 3] = 255;
         //    }
         //}
-        const spectroImgData = this.spectroCanvas.ctx.createImageData(spectroDims.width, spectroDims.height);
+        const spectroImgData = this.spectroCanvas.ctx.createImageData(spectrum.dims.width, spectrum.dims.height / 2);
         spectroImgData.data.set(spectroImgBuff);
         this.spectroCanvas.ctx.putImageData(spectroImgData, 0, 0);
         //this.spectroCanvas.ctx.drawImage(this.spectroCanvas.ctx.canvas, 0, 0, this.spectroCanvas.ctx.canvas.width * 2, this.spectroCanvas.ctx.canvas.height * 2);
