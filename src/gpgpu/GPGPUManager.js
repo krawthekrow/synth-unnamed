@@ -1,17 +1,10 @@
+import ShaderUtils from 'webgl/ShaderUtils.js';
 import {Array2D, Utils} from 'utils/Utils.js';
 
 class GPUArray{
     constructor(dims, tex){
         this.dims = dims;
         this.tex = tex;
-    }
-};
-
-class WebGLProgramInfo{
-    constructor(program, vertShader, fragShader){
-        this.program = program;
-        this.vertShader = vertShader;
-        this.fragShader = fragShader;
     }
 };
 
@@ -62,25 +55,6 @@ class GPGPUManager{
         this.ctx.bindBuffer(type, buff);
         this.ctx.bufferData(type, contents, this.ctx.STATIC_DRAW);
         return buff;
-    }
-    compileShader(src, type){
-        const shader = this.ctx.createShader(type);
-        this.ctx.shaderSource(shader, src);
-        this.ctx.compileShader(shader);
-        if(!this.ctx.getShaderParameter(shader, this.ctx.COMPILE_STATUS)){
-            console.log(src);
-            throw 'Shader compile error: ' + this.ctx.getShaderInfoLog(shader);
-        }
-        return shader;
-    }
-    createProgram(vertSrc, fragSrc){
-        const program = this.ctx.createProgram();
-        const vertShader = this.compileShader(vertSrc, this.ctx.VERTEX_SHADER);
-        const fragShader = this.compileShader(fragSrc, this.ctx.FRAGMENT_SHADER);
-        this.ctx.attachShader(program, vertShader);
-        this.ctx.attachShader(program, fragShader);
-        this.ctx.linkProgram(program);
-        return new WebGLProgramInfo(program, vertShader, fragShader);
     }
     createComputeTexture(dims, type = this.ctx.FLOAT, contents = null, format = this.ctx.RGBA){
         const tex = this.ctx.createTexture();
@@ -163,8 +137,8 @@ class GPGPUManager{
     }
     drawQuad(program){
         this.ctx.useProgram(program);
-        this.ctx.bindBuffer(this.ctx.ELEMENT_ARRAY_BUFFER, this.quadIndexBuff);
         this.enableAttribs(1);
+        this.ctx.bindBuffer(this.ctx.ELEMENT_ARRAY_BUFFER, this.quadIndexBuff);
         this.ctx.drawElements(this.ctx.TRIANGLE_STRIP, GPGPUManager.FULLSCREEN_QUAD_NUM_VERT, this.ctx.UNSIGNED_SHORT, 0);
     }
     disposeGPUArr(gpuArr){
@@ -283,7 +257,7 @@ gl_FragData[0] = ` + placeCode + `;
             ).join('\n') + '\n',
             uniforms, includeSrc, numOutputs > 1
         );
-        const programInfo = this.createProgram(vertShaderSrc, fragShaderSrc);
+        const programInfo = ShaderUtils.createProgram(this.ctx, vertShaderSrc, fragShaderSrc);
         const program = programInfo.program;
 
         this.ctx.useProgram(program);
@@ -320,7 +294,7 @@ gl_FragData[0] = ` + placeCode + `;
         );
     }
     disposeKernel(kernel){
-        this.disposeProgram(kernel.programInfo);
+        ShaderUtils.disposeProgram(this.ctx, kernel.programInfo);
     }
 };
 GPGPUManager.FULLSCREEN_QUAD_POS_ARR = new Float32Array([

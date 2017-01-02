@@ -46,24 +46,10 @@ class SynthApp extends React.Component {
         const gpgpuManager = new GPGPUManager(null, true);
         const gpuSTFT = new GPUSTFT(gpgpuManager);
         const wrapWidth = 2048;
-        const truncBuff = new Float32Array(bufferView.buffer, 0, wrapWidth * 128);
+        const truncBuff = new Float32Array(bufferView.buffer, 0, wrapWidth * 256);
         const spectrum = gpuSTFT.stft(truncBuff, windSz, false, false, wrapWidth);
         gpuSTFT.dispose();
 
-        /*
-        const spectroDims = new Dimensions(numWind, halfWindSz);
-        const windFunc = Utils.compute1DArray(windSz,
-            i => 0.5 * (1 - Math.cos(2 * Math.PI * i / (windSz - 1)))
-        );
-        const dftInput = Utils.compute2DArrayAsArray2D(
-            new Dimensions(spectroDims.width, windSz),
-            pos => bufferView[pos.x * windSz + pos.y] * windFunc[pos.y]
-        );
-        const gpgpuManager = new GPGPUManager(null, true);
-        const gpuFFT = new GPUFFT(gpgpuManager);
-        const spectrum = gpuFFT.parallelFFT(dftInput).data.slice(halfWindSz, windSz);
-        gpuFFT.dispose();
-        */
         const maxMag = 5;
         const flatSpectrum = Utils.flatten(Utils.flatten(
             spectrum.data.slice(halfWindSz, windSz)
@@ -73,25 +59,6 @@ class SynthApp extends React.Component {
         ]));
         
         const spectroImgBuff = new Uint8ClampedArray(flatSpectrum);
-
-        //for(let i = 0; i < texDims; i++){
-        //    const dftInput = new Float32Array(windowSize);
-        //    for(let i2 = 0; i2 < windowSize; i2++){
-        //        const signalVal = bufferView[i * windowSize + i2];
-        //        const windowVal = 0;
-        //        dftInput[i2] = signalVal * windowVal;
-        //    }
-        //    for(let k = 0; k < halfWindowSize; k++){
-        //        let coeff = Complex.ZERO;
-        //        for(let i2 = 0; i2 < windowSize; i2++){
-        //            coeff = coeff.add(Complex.exp(new Complex(0, -2 * Math.PI * k * i2 / windowSize)).rMult(dftInput[i2]));
-        //        }
-        //        const pixOffset = k * (spectroDims.width * 4) + i * 4;
-        //        const mag = Math.floor(Utils.clamp(Math.log(coeff.abs()) + 10, 0, maxMag) / maxMag * 256);
-        //        spectroImgBuff[pixOffset] = mag;
-        //        spectroImgBuff[pixOffset + 3] = 255;
-        //    }
-        //}
         const spectroImgData = this.spectroCanvas.ctx.createImageData(spectrum.dims.width, spectrum.dims.height / 2);
         spectroImgData.data.set(spectroImgBuff);
         this.spectroCanvas.ctx.putImageData(spectroImgData, 0, 0);
@@ -103,7 +70,8 @@ class SynthApp extends React.Component {
 <div>
     <SoundUploader onUpload={data => this.handleSoundUpload(data)} />
     {/*<TestCanvas />*/}
-    <SpectrogramCanvas ref={canvas => {this.spectroCanvas = canvas;}} />
+    <canvas key='mainCanvas' width='1800' height='1024' ref={canvas => {this.mainCanvas = canvas;}} />
+    {/*<SpectrogramCanvas ref={canvas => {this.spectroCanvas = canvas;}} />*/}
 </div>
         );
     }
