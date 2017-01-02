@@ -26,6 +26,11 @@ class ShaderUtils{
         ctx.linkProgram(program);
         return new WebGLProgramInfo(program, vertShader, fragShader);
     }
+    static setVertAttrib(ctx, program, attribName, itemSize, buff){
+        const attrib = ctx.getAttribLocation(program, attribName);
+        ctx.bindBuffer(ctx.ARRAY_BUFFER, buff);
+        ctx.vertexAttribPointer(attrib, itemSize, ctx.FLOAT, false, 0, 0);
+    }
     static disposeProgram(ctx, programInfo){
         ctx.detachShader(programInfo.program, programInfo.vertShader);
         ctx.detachShader(programInfo.program, programInfo.fragShader);

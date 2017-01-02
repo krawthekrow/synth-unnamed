@@ -112,6 +112,12 @@ class Rect{
     get bottom(){
         return this.pos.y + this.dims.height;
     }
+    static fromBounds(left, right, top, bottom){
+        return new Rect(
+            new Vector(left, top),
+            new Dimensions(right - left, bottom - top)
+        );
+    }
 };
 
 class Array2D{

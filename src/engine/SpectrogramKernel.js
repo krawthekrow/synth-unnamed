@@ -11,6 +11,13 @@ class SpectrogramKernel{
         return this.manager.ctx;
     }
     run(data, windSz, magRange, magOffset, wrapWidth = windSz / 2){
+        if(data.length % wrapWidth != 0){
+            const paddedData = new Float32Array(
+                Math.floor(data.length / wrapWidth + 1) * wrapWidth
+            );
+            paddedData.set(data);
+            data = paddedData;
+        }
         const halfWindSz = windSz / 2;
         const spectrum = this.gpuSTFT.stft(data, windSz, false, true, wrapWidth);
         const resGPUArr = this.manager.runKernel(
@@ -18,7 +25,7 @@ class SpectrogramKernel{
             new Dimensions(spectrum.dims.width, halfWindSz), {
                 magRange: magRange,
                 magOffset: magOffset
-            }
+            }, true
         )[0];
         this.manager.disposeGPUArr(spectrum);
         return resGPUArr;
@@ -42,7 +49,7 @@ gl_FragData[0] = vec4(
                 type: 'float',
                 name: 'magOffset'
             }
-        ], 1, '', true);
+        ], 1, '');
     }
 };
 

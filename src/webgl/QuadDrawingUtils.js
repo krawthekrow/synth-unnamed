@@ -15,6 +15,34 @@ void main(){
 }`;
         return res;
     }
+    static createDirectDrawFragShaderSrc(){
+    }
+    static translateVecToGLCoords(vec, canvasDims){
+        return new Vector(
+            vec.x / canvasDims.width * 2 - 1,
+            - vec.y / canvasDims.height * 2 + 1
+        );
+    }
+    static translateRectToGLCoords(rect, canvasDims){
+        return new Rect(
+            translateVecToGLCoords(
+                new Vector(rect.pos.x, rect.pos.bottom)
+                , canvasDims
+            ),
+            new Dimensions(
+                rect.width / canvasDims.width * 2,
+                rect.height / canvasDims.height * 2
+            )
+        );
+    }
+    static createQuadArray(rect){
+        return new Float32Array([
+            rect.left, rect.top,
+            rect.left, rect.bottom,
+            rect.right, rect.bottom,
+            rect.right, rect.top
+        ]);
+    }
 };
 QuadDrawingUtils.TRANSFORMS = {
     flipX: 'pos.x = -pos.x;',

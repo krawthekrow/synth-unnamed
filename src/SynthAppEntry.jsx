@@ -17,10 +17,13 @@ class SynthApp extends React.Component {
     constructor(props){
         super(props);
         this.sound = null;
+        this.webglStateManager = null;
     }
     componentDidMount(){
         UnitTestsManager.runAllTests();
         //FFTTimingTestManager.run();
+        this.webglStateManager = GPGPUManager.createWebGLStateManager(this.mainCanvas);
+        this.gpgpuManager = new GPGPUManager(this.webglStateManager);
     }
     handleSoundUpload(data){
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -42,18 +45,16 @@ class SynthApp extends React.Component {
 
         const wrapWidth = 2048;
         const truncBuff = new Float32Array(bufferView.buffer, 0, wrapWidth * 256);
-        const gpgpuManager = new GPGPUManager(null, true);
-        const spectroKernel = new SpectrogramKernel(gpgpuManager);
-        const spectro = spectroKernel.run(truncBuff, 2048, 5, 2, 2048);
+        const spectroKernel = new SpectrogramKernel(this.gpgpuManager);
+        const spectro = spectroKernel.run(bufferView, 2048, 5, 2, 2048);
         spectroKernel.dispose();
         
         const spectroImgBuff = new Uint8ClampedArray(
-            gpgpuManager.gpuArrToFlatArr(spectro, true)
+            this.gpgpuManager.gpuArrToFlatArr(spectro, true)
         );
         const spectroImgData = this.spectroCanvas.ctx.createImageData(spectro.dims.width, spectro.dims.height);
         spectroImgData.data.set(spectroImgBuff);
         this.spectroCanvas.ctx.putImageData(spectroImgData, 0, 0);
-        //this.spectroCanvas.ctx.drawImage(this.spectroCanvas.ctx.canvas, 0, 0, this.spectroCanvas.ctx.canvas.width * 2, this.spectroCanvas.ctx.canvas.height * 2);
         console.log('Done.');
     }
     render(){
@@ -61,7 +62,7 @@ class SynthApp extends React.Component {
 <div>
     <SoundUploader onUpload={data => this.handleSoundUpload(data)} />
     {/*<TestCanvas />*/}
-    {/*<canvas key='mainCanvas' width='1800' height='1024' ref={canvas => {this.mainCanvas = canvas;}} />*/}
+    <canvas key='mainCanvas' width='1800' height='1024' ref={canvas => {this.mainCanvas = canvas;}} />
     <SpectrogramCanvas ref={canvas => {this.spectroCanvas = canvas;}} />
 </div>
         );
