@@ -26,6 +26,12 @@ class ShaderUtils{
         ctx.linkProgram(program);
         return new WebGLProgramInfo(program, vertShader, fragShader);
     }
+    static registerTextures(ctx, program, texNames){
+        texNames.forEach((texName, i) => {
+            const texLoc = ctx.getUniformLocation(program, texName);
+            ctx.uniform1i(texLoc, i);
+        });
+    }
     static setVertAttrib(ctx, program, attribName, itemSize, buff){
         const attrib = ctx.getAttribLocation(program, attribName);
         ctx.bindBuffer(ctx.ARRAY_BUFFER, buff);

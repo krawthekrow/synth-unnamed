@@ -34,7 +34,7 @@ class GPGPUManager{
             this.ctx.getExtension('OES_texture_float');
         }
 
-        this.quadPosBuff = this.createStaticArrBuff(this.ctx.ARRAY_BUFFER, GPGPUManager.FULLSCREEN_QUAD_POS_ARR);
+        this.quadPosBuff = this.createStaticArrBuff(this.ctx.ARRAY_BUFFER, QuadDrawingUtils.QUAD_POS_ARR);
         this.quadIndexBuff = this.createStaticArrBuff(this.ctx.ELEMENT_ARRAY_BUFFER, QuadDrawingUtils.QUAD_INDEX_ARR);
     }
     get ctx(){
@@ -96,12 +96,6 @@ class GPGPUManager{
             throw 'GL_FRAMEBUFFER_COMPLETE failed.';
         }
         return fbo;
-    }
-    registerTextures(program, texNames){
-        texNames.forEach((texName, i) => {
-            const texLoc = this.ctx.getUniformLocation(program, texName);
-            this.ctx.uniform1i(texLoc, i);
-        });
     }
     registerUniforms(program, uniforms, vals){
         uniforms.forEach(uniform => {
@@ -253,7 +247,7 @@ gl_FragData[0] = ` + placeCode + `;
 
         this.ctx.useProgram(program);
         ShaderUtils.setVertAttrib(this.ctx, program, 'aPos', 2, this.quadPosBuff)
-        this.registerTextures(program, inputNames);
+        ShaderUtils.registerTextures(this.ctx, program, inputNames);
         return new GPGPUKernel(programInfo, params, numOutputs);
     }
     runKernel(kernel, inputArrs, outputDims, paramVals = {}, colorOutput = false, drawDirect = false){
@@ -288,9 +282,6 @@ gl_FragData[0] = ` + placeCode + `;
         ShaderUtils.disposeProgram(this.ctx, kernel.programInfo);
     }
 };
-GPGPUManager.FULLSCREEN_QUAD_POS_ARR = QuadDrawingUtils.createQuadArray(
-    Rect.fromBounds(-1, 1, -1, 1)
-);
 
 // Credit: https://gist.github.com/TooTallNate/4750953
 GPGPUManager.ENDIANNESS = (() => {
