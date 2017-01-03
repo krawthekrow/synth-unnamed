@@ -1,7 +1,6 @@
 import GPGPUComplexIncludes from 'gpgpu/GPGPUComplexIncludes.js';
 import GPGPUManager from 'gpgpu/GPGPUManager.js';
 import {Utils} from 'utils/Utils.js';
-import GPUFFTUtils from 'gpgpu/GPUFFTUtils.js';
 import ComplexArray2D from 'gpgpu/ComplexArray2D.js';
 
 /*

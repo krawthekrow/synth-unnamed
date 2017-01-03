@@ -44,13 +44,13 @@ class ComplexArray2D{
                 else{
                     this.gpuArrs = [manager.arrToGPUArr(
                         Utils.compute2DArrayAsArray2D(
-                            this.cpuArrs[0].dims,
+                            this.dims,
                             pos => [
                                 this.cpuArrs[1].data[pos.y][pos.x],
                                 0, 0,
                                 this.cpuArrs[0].data[pos.y][pos.x]
                             ]
-                        )
+                        ), false
                     )];
                 }
             }

@@ -1,6 +1,7 @@
 import GPGPUComplexIncludes from 'gpgpu/GPGPUComplexIncludes.js';
 import GPGPUManager from 'gpgpu/GPGPUManager.js';
 import {Utils} from 'utils/Utils.js';
+import ComplexArray2D from 'gpgpu/ComplexArray2D.js';
 
 class GPUIFFT{
     constructor(manager){
@@ -31,39 +32,24 @@ gl_FragData[0] = vec4(res.y, 0.0, 0.0, res.x);
             name: 'uButterflyWidth'
         }], 1, GPGPUComplexIncludes.PI + GPGPUComplexIncludes.LIB);
     }
-    parallelIFFT(arr, fromGPUArr = false, toGPUArr = false){
+    parallelIFFT(arr){
         const fftWidth = arr.dims.height;
         if((fftWidth & (fftWidth - 1)) != 0){
             throw 'Cannot do FFT on non-power of two width.';
         }
-        let stepArr = fromGPUArr ?
-            arr :
-            this.manager.flatArrToGPUArr(
-                Utils.flatten(arr.data), arr.dims, 1
-            );
+        let stepArr = arr.getGPUArr(this.manager);
         for(let butterflyWidth = 1; butterflyWidth < fftWidth; butterflyWidth *= 2){
             const stepResGPUArr = this.manager.runKernel(
                 this.fftKernel, [stepArr], arr.dims, {
                     uButterflyWidth: butterflyWidth
                 }
             );
-            if(!(fromGPUArr && butterflyWidth == 1)){
+            if(butterflyWidth != 1){
                 this.manager.disposeGPUArr(stepArr);
             }
             stepArr = stepResGPUArr[0];
         }
-        if(toGPUArr) return stepArr;
-        else{
-            const resArr = this.manager.gpuArrToArr(stepArr, false);
-            this.manager.disposeGPUArr(stepArr);
-            return [Utils.compute2DArrayAsArray2D(
-                resArr.dims,
-                pos => resArr.data[pos.y][pos.x][3]
-            ), Utils.compute2DArrayAsArray2D(
-                resArr.dims,
-                pos => resArr.data[pos.y][pos.x][0]
-            )];
-        }
+        return ComplexArray2D.fromGPUArr(stepArr);
     }
     dispose(){
         this.manager.disposeKernel(this.fftKernel);

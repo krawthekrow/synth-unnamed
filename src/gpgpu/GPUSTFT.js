@@ -11,7 +11,7 @@ class GPUSTFT{
         this.manager = manager;
         this.fftManager = new GPUFFT(this.manager);
         this.windowKernel = this.manager.createKernel(
-`float windVal = 0.5 * (1.0 - cos(2.0 * PI * float(threadId.y) / float(uDims.y - 1)));
+`float windVal = 0.5 * (1.0 - cos(2.0 * PI * float(threadId.y * 2 + 1) / float(uDims.y * 2)));
 int arrIndex = threadId.x * uDims.y / 2 + threadId.y;
 float res = windVal * arrGet(uArr, ivec2(
     int(mod(float(arrIndex), float(uSrcDims.x))),
@@ -24,7 +24,7 @@ gl_FragData[0] = vec4(0.0, 0.0, 0.0, res);
             name: 'uSrcDims'
         }], 1, GPGPUComplexIncludes.PI);
     }
-    stft(arr, windSz = 1024, fromGPUArr = false, toGPUArr = false, wrapWidth = windSz / 2){
+    stft(arr, windSz = 1024, fromGPUArr = false, wrapWidth = windSz / 2){
         if(!fromGPUArr && arr.length % wrapWidth != 0){
             throw 'Array length must be a multiple of the wrap width.';
         }
@@ -47,6 +47,7 @@ gl_FragData[0] = vec4(0.0, 0.0, 0.0, res);
     }
     dispose(){
         this.manager.disposeKernel(this.windowKernel);
+        this.fftManager.dispose();
     }
 };
 GPUSTFT.DEFAULT_WRAP_WIDTH = 2048;
