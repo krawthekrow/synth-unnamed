@@ -3,10 +3,12 @@ import ShaderUtils from 'webgl/ShaderUtils.js';
 
 class QuadDrawingUtils{
     static createVertShaderSrc(transforms = [], dynamicDims = false, dynamicPos = false, coordSystem = QuadDrawingUtils.TEX_COORD_SYSTEM.img){
+        const fullTransforms = [];
         if(dynamicDims)
-            transforms.push(QuadDrawingUtils.TRANSFORMS.scale);
+            fullTransforms.push(QuadDrawingUtils.TRANSFORMS.scale);
         if(dynamicPos)
-            transforms.push(QuadDrawingUtils.TRANSFORMS.translate);
+            fullTransforms.push(QuadDrawingUtils.TRANSFORMS.translate);
+        fullTransforms.push(...transforms);
         const res =
 `precision highp float;
 

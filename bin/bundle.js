@@ -102,6 +102,10 @@ var SynthApp =
 	
 	var _GPUSTFT2 = _interopRequireDefault(_GPUSTFT);
 	
+	var _GPUISTFT = __webpack_require__(/*! gpgpu/GPUISTFT.js */ 25);
+	
+	var _GPUISTFT2 = _interopRequireDefault(_GPUISTFT);
+	
 	var _SpectrogramKernel = __webpack_require__(/*! engine/SpectrogramKernel.js */ 17);
 	
 	var _SpectrogramKernel2 = _interopRequireDefault(_SpectrogramKernel);
@@ -109,6 +113,10 @@ var SynthApp =
 	var _QuadDrawingKernel = __webpack_require__(/*! webgl/QuadDrawingKernel.js */ 21);
 	
 	var _QuadDrawingKernel2 = _interopRequireDefault(_QuadDrawingKernel);
+	
+	var _ComplexArray2D = __webpack_require__(/*! gpgpu/ComplexArray2D.js */ 24);
+	
+	var _ComplexArray2D2 = _interopRequireDefault(_ComplexArray2D);
 	
 	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 	
@@ -135,18 +143,18 @@ var SynthApp =
 	    _createClass(SynthApp, [{
 	        key: 'componentDidMount',
 	        value: function componentDidMount() {
-	            //UnitTestsManager.runAllTests();
+	            _UnitTestsManager2.default.runAllTests();
 	            //FFTTimingTestManager.run();
 	            this.webglStateManager = _GPGPUManager2.default.createWebGLStateManager(this.mainCanvas);
 	            this.gpgpuManager = new _GPGPUManager2.default(this.webglStateManager);
+	            this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 	        }
 	    }, {
 	        key: 'handleSoundUpload',
 	        value: function handleSoundUpload(data) {
 	            var _this2 = this;
 	
-	            var ctx = new (window.AudioContext || window.webkitAudioContext)();
-	            ctx.decodeAudioData(data).then(function (buffer) {
+	            this.audioCtx.decodeAudioData(data).then(function (buffer) {
 	                _this2.setSound(buffer);
 	                //const bufferView = buffer.getChannelData(0);
 	                //for(let i = 0; i < buffer.length; i++){
@@ -164,13 +172,32 @@ var SynthApp =
 	            this.sound = buffer;
 	            var bufferView = this.sound.getChannelData(0);
 	
+	            var windSz = 2048;
+	
 	            var gpuSTFT = new _GPUSTFT2.default(this.gpgpuManager);
-	            var spectrum = gpuSTFT.stft(bufferView, 2048, false, 2048);
+	            var spectrum = gpuSTFT.stft(bufferView, windSz, false, 2048);
 	            gpuSTFT.dispose();
 	
+	            var gpuISTFT = new _GPUISTFT2.default(this.gpgpuManager);
+	            var realArr = spectrum.getCPUArrs(this.gpgpuManager)[0];
+	            var imgArr = spectrum.getCPUArrs(this.gpgpuManager)[1];
+	            var magArr = _ComplexArray2D2.default.fromRealArr(_Utils.Utils.compute2DArrayAsArray2D(realArr.dims, function (pos) {
+	                var mag = Math.sqrt(Math.pow(realArr.data[pos.y][pos.x], 2) + Math.pow(imgArr.data[pos.y][pos.x], 2)) / windSz;
+	                //if(mag < 0.0001) mag = 0;
+	                //if(pos.y < 500 && pos.y % 50 == 0) mag = 0.002;
+	                //else mag = 0;
+	                return mag;
+	            }));
+	            var resynth = gpuISTFT.istft(magArr);
+	            gpuISTFT.dispose();
+	            for (var i = 0; i < resynth.length; i++) {
+	                bufferView[i] = resynth[i];
+	            }
+	
 	            var spectroKernel = new _SpectrogramKernel2.default(this.gpgpuManager);
-	            var spectro = spectroKernel.run(spectrum, 5, 2);
+	            var spectro = spectroKernel.run(magArr, 10, 2);
 	            spectroKernel.dispose();
+	            magArr.dispose(this.gpgpuManager);
 	            spectrum.dispose(this.gpgpuManager);
 	
 	            var quadKernel = new _QuadDrawingKernel2.default(this.webglStateManager);
@@ -179,7 +206,12 @@ var SynthApp =
 	
 	            this.gpgpuManager.disposeGPUArr(spectro);
 	
-	            console.log('Done.');
+	            var source = this.audioCtx.createBufferSource();
+	            source.buffer = buffer;
+	            source.connect(this.audioCtx.destination);
+	            source.start();
+	
+	            //console.log('Done.');
 	        }
 	    }, {
 	        key: 'render',
@@ -1317,6 +1349,8 @@ var SynthApp =
 	
 	function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 	
+	function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } else { return Array.from(arr); } }
+	
 	function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 	
 	var QuadDrawingUtils = function () {
@@ -1332,8 +1366,10 @@ var SynthApp =
 	            var dynamicPos = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : false;
 	            var coordSystem = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : QuadDrawingUtils.TEX_COORD_SYSTEM.img;
 	
-	            if (dynamicDims) transforms.push(QuadDrawingUtils.TRANSFORMS.scale);
-	            if (dynamicPos) transforms.push(QuadDrawingUtils.TRANSFORMS.translate);
+	            var fullTransforms = [];
+	            if (dynamicDims) fullTransforms.push(QuadDrawingUtils.TRANSFORMS.scale);
+	            if (dynamicPos) fullTransforms.push(QuadDrawingUtils.TRANSFORMS.translate);
+	            fullTransforms.push.apply(fullTransforms, _toConsumableArray(transforms));
 	            var res = 'precision highp float;\n\nattribute vec2 aPos;\n\n' + (dynamicDims ? 'uniform vec2 uScale;\n' : '') + (dynamicPos ? 'uniform vec2 uTranslate;\n' : '') + '\nvarying vec2 vCoord;\n\nvoid main(){\n    vec2 pos = aPos;\n' + transforms.map(function (line) {
 	                return '    ' + line;
 	            }).join('\n') + '\n    vec2 glPos = vec2(pos.x * 2.0 - 1.0, pos.y * 2.0 - 1.0);\n    gl_Position = vec4(glPos, 0.0, 1.0);\n    ' + coordSystem + '\n}';
@@ -2900,9 +2936,9 @@ var SynthApp =
 	            if (toGPUArr) return resGPUArr;else {
 	                var resPixelArr = this.manager.gpuArrToFlatArr(resGPUArr);
 	                this.manager.disposeGPUArr(resGPUArr);
-	                var resArr = [];
+	                var resArr = new Float32Array(resArrLength);
 	                for (var i = 0; i < resArrLength; i++) {
-	                    resArr.push(resPixelArr[i * 4]);
+	                    resArr[i] = resPixelArr[i * 4];
 	                }
 	                return resArr;
 	            }

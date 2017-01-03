@@ -41,9 +41,9 @@ gl_FragData[0] = vec4(res, 0.0, 0.0, 0.0);
         else{
             const resPixelArr = this.manager.gpuArrToFlatArr(resGPUArr);
             this.manager.disposeGPUArr(resGPUArr);
-            const resArr = [];
+            const resArr = new Float32Array(resArrLength);
             for(let i = 0; i < resArrLength; i++){
-                resArr.push(resPixelArr[i * 4]);
+                resArr[i] = resPixelArr[i * 4];
             }
             return resArr;
         }
