@@ -22,8 +22,8 @@ class SynthApp extends React.Component {
         this.CANVAS_DIMS = new Dimensions(1800, 1024);
     }
     componentDidMount(){
-        UnitTestsManager.runAllTests();
-        FFTTimingTestManager.run();
+        //UnitTestsManager.runAllTests();
+        //FFTTimingTestManager.run();
         this.webglStateManager = GPGPUManager.createWebGLStateManager(this.mainCanvas);
         this.gpgpuManager = new GPGPUManager(this.webglStateManager);
     }
@@ -45,9 +45,14 @@ class SynthApp extends React.Component {
         this.sound = buffer;
         const bufferView = this.sound.getChannelData(0);
 
+        const gpuSTFT = new GPUSTFT(this.gpgpuManager);
+        const spectrum = gpuSTFT.stft(bufferView, 2048, false, 2048);
+        gpuSTFT.dispose();
+
         const spectroKernel = new SpectrogramKernel(this.gpgpuManager);
-        const spectro = spectroKernel.run(bufferView, 2048, 5, 2, 2048);
+        const spectro = spectroKernel.run(spectrum, 5, 2);
         spectroKernel.dispose();
+        spectrum.dispose(this.gpgpuManager);
 
         const quadKernel = new QuadDrawingKernel(this.webglStateManager);
         quadKernel.run(spectro.tex, new Rect(

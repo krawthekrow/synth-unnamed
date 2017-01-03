@@ -26,7 +26,11 @@ gl_FragData[0] = vec4(0.0, 0.0, 0.0, res);
     }
     stft(arr, windSz = 1024, fromGPUArr = false, wrapWidth = windSz / 2){
         if(!fromGPUArr && arr.length % wrapWidth != 0){
-            throw 'Array length must be a multiple of the wrap width.';
+            const paddedArr = new Float32Array(
+                Math.floor(arr.length / wrapWidth + 1) * wrapWidth
+            );
+            paddedArr.set(arr);
+            arr = paddedArr;
         }
         const gpuArrDims = fromGPUArr ? arr.dims :
             new Dimensions(wrapWidth, arr.length / wrapWidth);
