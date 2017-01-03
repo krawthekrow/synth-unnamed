@@ -326,7 +326,7 @@ class STFTUnitTests{
         const slicedRandArr = randArr.slice(windSz / 2, -windSz / 2);
         TestUtils.processTestResult(
             'GPU STFT-ISTFT vs identity',
-            TestUtils.compareArrays(slicedIdentityArr, slicedRandArr, TestUtils.floatEquals)
+            TestUtils.compareArrays(slicedIdentityArr, slicedRandArr, (x, y) => TestUtils.floatEquals(x, y, 1e-3))
         );
         resArr.dispose(gpgpuManager);
         manualResArr.dispose(gpgpuManager);
@@ -335,43 +335,38 @@ class STFTUnitTests{
 };
 
 class SpectrogramUnitTests{
-    static manualSpectrogram(data, windSz, magRange, magOffset, wrapWidth = windSz / 2){
-        const halfWindSz = windSz / 2;
-        const numWind = parseInt(data.length / halfWindSz) - 1;
-
-        const gpgpuManager = new GPGPUManager(null, true);
-        const gpuSTFT = new GPUSTFT(gpgpuManager);
-        const spectrumComplexArr = gpuSTFT.stft(data, windSz);
-        const spectrum = spectrumComplexArr.getCPUArrs(gpgpuManager);
-        spectrumComplexArr.dispose(gpgpuManager);
-        
+    static manualSpectrogram(data, magRange, magOffset){
         const res = Utils.flatten(Utils.flatten(
             Utils.compute2DArray(
-                spectrum[0].dims,
+                data.dims,
                 pos => Math.sqrt(
-                    Math.pow(spectrum[0].data[pos.y][pos.x], 2) +
-                    Math.pow(spectrum[1].data[pos.y][pos.x], 2)
-                ) / Math.sqrt(spectrum[0].dims.height)
-            ).slice(0, halfWindSz)
+                    Math.pow(data.getCPUArrs()[0].data[pos.y][pos.x], 2) +
+                    Math.pow(data.getCPUArrs()[1].data[pos.y][pos.x], 2)
+                ) / Math.sqrt(data.dims.height)
+            ).slice(0, data.dims.height / 2)
         ).map(mag => [
             Utils.clamp(Math.log(mag) / magRange + magOffset, 0, 1),
             0, 0, 1
         ]));
-        gpuSTFT.dispose();
-        gpgpuManager.dispose();
         return res;
     }
     static run(){
-        const testLength = 128;
-        const randArr = Utils.compute1DArray(
-            testLength,
-            i => Math.random()
+        const testDims = new Dimensions(5, 6);
+        const randArr = ComplexArray2D.fromArrs(
+            Utils.compute2DArrayAsArray2D(
+                testDims,
+                pos => Math.random()
+            ),
+            Utils.compute2DArrayAsArray2D(
+                testDims,
+                pos => Math.random()
+            )
         );
-        const windSz = 8, magRange = 5, magOffset = 1;
-        const expectedArr = SpectrogramUnitTests.manualSpectrogram(randArr, windSz, magRange, magOffset);
+        const magRange = 5, magOffset = 1;
+        const expectedArr = SpectrogramUnitTests.manualSpectrogram(randArr, magRange, magOffset);
         const manager = new GPGPUManager(null, true);
         const spectroKernel = new SpectrogramKernel(manager);
-        const resGPUArr = spectroKernel.run(randArr, windSz, magRange, magOffset);
+        const resGPUArr = spectroKernel.run(randArr, magRange, magOffset);
         spectroKernel.dispose();
         const resArr = Array.from(manager.gpuArrToFlatArr(resGPUArr, true)).map(
             val => val / 255

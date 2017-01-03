@@ -4,34 +4,22 @@ import {Dimensions} from 'utils/Utils.js';
 class SpectrogramKernel{
     constructor(manager){
         this.manager = manager;
-        this.gpuSTFT = new GPUSTFT(this.manager);
         this.postprocessKernel = SpectrogramKernel.createPostprocessKernel(this.manager);
     }
     get ctx(){
         return this.manager.ctx;
     }
-    run(data, windSz, magRange, magOffset, wrapWidth = windSz / 2){
-        if(data.length % wrapWidth != 0){
-            const paddedData = new Float32Array(
-                Math.floor(data.length / wrapWidth + 1) * wrapWidth
-            );
-            paddedData.set(data);
-            data = paddedData;
-        }
-        const halfWindSz = windSz / 2;
-        const spectrum = this.gpuSTFT.stft(data, windSz, false, true, wrapWidth);
+    run(data, magRange, magOffset){
         const resGPUArr = this.manager.runKernel(
-            this.postprocessKernel, [spectrum.getGPUArr()],
-            new Dimensions(spectrum.dims.width, halfWindSz), {
+            this.postprocessKernel, [data.getGPUArr(this.manager)],
+            new Dimensions(data.dims.width, data.dims.height / 2), {
                 magRange: magRange,
                 magOffset: magOffset
             }, true
         )[0];
-        spectrum.dispose(this.manager);
         return resGPUArr;
     }
     dispose(){
-        this.gpuSTFT.dispose();
         this.manager.disposeKernel(this.postprocessKernel);
     }
     static createPostprocessKernel(manager){
