@@ -23,7 +23,7 @@ class SynthApp extends React.Component {
     }
     componentDidMount(){
         UnitTestsManager.runAllTests();
-        //FFTTimingTestManager.run();
+        FFTTimingTestManager.run();
         this.webglStateManager = GPGPUManager.createWebGLStateManager(this.mainCanvas);
         this.gpgpuManager = new GPGPUManager(this.webglStateManager);
     }
