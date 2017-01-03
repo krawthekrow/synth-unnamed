@@ -131,6 +131,9 @@ class Array2D{
     get height(){
         return this.dims.height;
     }
+    getFlatArr(){
+        return Utils.flatten(this.data);
+    }
 };
 
 class MouseButton{

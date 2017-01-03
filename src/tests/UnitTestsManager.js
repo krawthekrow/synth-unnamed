@@ -4,7 +4,9 @@ import {Dimensions, Utils} from 'utils/Utils.js';
 import GPUDFT from 'gpgpu/GPUDFT.js';
 import GPUFFT from 'gpgpu/GPUFFT.js';
 import GPUSTFT from 'gpgpu/GPUSTFT.js';
+import GPUIFFT from 'gpgpu/GPUIFFT.js';
 import SpectrogramKernel from 'engine/SpectrogramKernel.js';
+import ComplexArray2D from 'gpgpu/ComplexArray2D.js';
 
 class TestUtils{
     static compareArrays(arr1, arr2, cmpFunc = TestUtils.defaultEquals){
@@ -29,6 +31,12 @@ class TestUtils{
             }
         }
         return true;
+    }
+    static compareComplexArray2D(manager, arr1, arr2, cmpFunc = TestUtils.defaultEquals){
+        const arrs1 = arr1.getCPUArrs(manager);
+        const arrs2 = arr2.getCPUArrs(manager);
+        return TestUtils.compareArray2D(arrs1[0], arrs2[0], cmpFunc) &&
+            TestUtils.compareArray2D(arrs1[1], arrs2[1], cmpFunc);
     }
     static defaultEquals(x, y){
         return x == y;
@@ -221,27 +229,45 @@ class FFTUnitTests{
         const manager = new GPGPUManager(stateManager, false);
         const managerFloat = new GPGPUManager(stateManager, true);
         const testDims = new Dimensions(1, 128);
-        const randArr = Utils.compute2DArrayAsArray2D(
-            testDims,
-            pos => Math.random()
+        const randArr = ComplexArray2D.fromRealArr(
+            Utils.compute2DArrayAsArray2D(
+                testDims,
+                pos => Math.random()
+            )
+        );
+        const randFloatArr = ComplexArray2D.fromRealArr(
+            Utils.compute2DArrayAsArray2D(
+                testDims,
+                pos => randArr.getCPUArrs()[0].data[pos.y][pos.x]
+            )
         );
         const gpuDFT = new GPUDFT(manager);
         const gpuFFT = new GPUFFT(manager);
         const gpuFFTFloat = new GPUFFT(managerFloat);
-        const dftArr = gpuDFT.parallelDFT(randArr);
-        const fftArr = gpuFFT.parallelFFT(randArr);
-        const fftFloatArr = gpuFFTFloat.parallelFFT(randArr);
+        const gpuIFFT = new GPUIFFT(managerFloat);
+        const dftArrs = gpuDFT.parallelDFT(randArr);
+        const fftArrs = gpuFFT.parallelFFT(randArr);
+        const fftFloatArrs = gpuFFTFloat.parallelFFT(randFloatArr);
         gpuDFT.dispose();
         gpuFFT.dispose();
         gpuFFTFloat.dispose();
+        gpuIFFT.dispose();
+        randArr.dispose(manager);
+        randFloatArr.dispose(managerFloat);
         TestUtils.processTestResult(
             'GPU FFT vs DFT',
-            TestUtils.compareArray2D(dftArr, fftArr, (x, y) => TestUtils.floatEquals(x, y, 1e-3))
+            TestUtils.compareComplexArray2D(manager, dftArrs, fftArrs, (x, y) => TestUtils.floatEquals(x, y, 1e-3, 1e-3))
         );
+        const fftCPUArrs = fftArrs.getCPUArrs(manager);
+        const fftFloatCPUArrs = fftFloatArrs.getCPUArrs(managerFloat);
         TestUtils.processTestResult(
             'GPU FFT packed vs float',
-            TestUtils.compareArray2D(fftArr, fftFloatArr, (x, y) => TestUtils.floatEquals(x, y, 1e-3))
+            TestUtils.compareArray2D(fftCPUArrs[0], fftFloatCPUArrs[0], (x, y) => TestUtils.floatEquals(x, y, 1e-3)) &&
+            TestUtils.compareArray2D(fftCPUArrs[1], fftFloatCPUArrs[1], (x, y) => TestUtils.floatEquals(x, y, 1e-3))
         );
+        dftArrs.dispose(manager);
+        fftArrs.dispose(manager);
+        fftFloatArrs.dispose(managerFloat);
         manager.dispose();
         managerFloat.dispose();
     }
@@ -254,12 +280,15 @@ class STFTUnitTests{
         const windFunc = Utils.compute1DArray(windSz,
             i => 0.5 * (1 - Math.cos(2 * Math.PI * i / (windSz - 1)))
         );
-        const fftInput = Utils.compute2DArrayAsArray2D(
-            new Dimensions(spectroDims.width, windSz),
-            pos => arr[pos.x * (windSz / 2) + pos.y] * windFunc[pos.y]
+        const fftInput = ComplexArray2D.fromRealArr(
+            Utils.compute2DArrayAsArray2D(
+                new Dimensions(spectroDims.width, windSz),
+                pos => arr[pos.x * (windSz / 2) + pos.y] * windFunc[pos.y]
+            )
         );
         const gpuFFT = new GPUFFT(gpgpuManager);
         const spectrum = gpuFFT.parallelFFT(fftInput);
+        fftInput.dispose(gpgpuManager);
         gpuFFT.dispose();
         return spectrum;
     }
@@ -277,8 +306,10 @@ class STFTUnitTests{
         gpuSTFT.dispose();
         TestUtils.processTestResult(
             'Manual vs GPU STFT',
-            TestUtils.compareArray2D(manualResArr, resArr, (x, y) => TestUtils.floatEquals(x, y, 1e-3))
+            TestUtils.compareComplexArray2D(gpgpuManager, manualResArr, resArr, (x, y) => TestUtils.floatEquals(x, y, 1e-3))
         );
+        resArr.dispose(gpgpuManager);
+        manualResArr.dispose(gpgpuManager);
         gpgpuManager.dispose();
     }
 };
@@ -290,16 +321,25 @@ class SpectrogramUnitTests{
 
         const gpgpuManager = new GPGPUManager(null, true);
         const gpuSTFT = new GPUSTFT(gpgpuManager);
-        const spectrum = gpuSTFT.stft(data, windSz);
-        gpuSTFT.dispose();
-        gpgpuManager.dispose();
+        const spectrumComplexArr = gpuSTFT.stft(data, windSz);
+        const spectrum = spectrumComplexArr.getCPUArrs(gpgpuManager);
+        spectrumComplexArr.dispose(gpgpuManager);
         
-        return Utils.flatten(Utils.flatten(
-            spectrum.data.slice(0, halfWindSz)
+        const res = Utils.flatten(Utils.flatten(
+            Utils.compute2DArray(
+                spectrum[0].dims,
+                pos => Math.sqrt(
+                    Math.pow(spectrum[0].data[pos.y][pos.x], 2) +
+                    Math.pow(spectrum[1].data[pos.y][pos.x], 2)
+                ) / Math.sqrt(spectrum[0].dims.height)
+            ).slice(0, halfWindSz)
         ).map(mag => [
             Utils.clamp(Math.log(mag) / magRange + magOffset, 0, 1),
             0, 0, 1
         ]));
+        gpuSTFT.dispose();
+        gpgpuManager.dispose();
+        return res;
     }
     static run(){
         const testLength = 128;

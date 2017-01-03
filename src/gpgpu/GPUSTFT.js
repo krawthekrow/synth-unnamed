@@ -1,6 +1,7 @@
 import GPUFFT from 'gpgpu/GPUFFT.js';
 import GPGPUComplexIncludes from 'gpgpu/GPGPUComplexIncludes.js';
 import {Utils, Dimensions} from 'utils/Utils.js';
+import ComplexArray2D from 'gpgpu/ComplexArray2D.js';
 
 class GPUSTFT{
     constructor(manager){
@@ -16,7 +17,7 @@ float res = windVal * arrGet(uArr, ivec2(
     int(mod(float(arrIndex), float(uSrcDims.x))),
     arrIndex / uSrcDims.x
 ), uSrcDims).a;
-gl_FragData[0] = vec4(res, 0.0, 0.0, 0.0);
+gl_FragData[0] = vec4(0.0, 0.0, 0.0, res);
 `,
         ['uArr'], [{
             type: 'ivec2',
@@ -31,21 +32,18 @@ gl_FragData[0] = vec4(res, 0.0, 0.0, 0.0);
             new Dimensions(wrapWidth, arr.length / wrapWidth);
         const gpuArr = fromGPUArr ? arr :
             this.manager.flatArrToGPUArr(arr, gpuArrDims, 1);
-        const fftInputArr = this.manager.runKernel(
-            this.windowKernel, [gpuArr],
-            new Dimensions(arr.length / (windSz / 2) - 1, windSz), {
-                uSrcDims: gpuArrDims.toArray()
-            }
-        )[0];
+        const fftInputArr = ComplexArray2D.fromGPUArr(
+            this.manager.runKernel(
+                this.windowKernel, [gpuArr],
+                new Dimensions(arr.length / (windSz / 2) - 1, windSz), {
+                    uSrcDims: gpuArrDims.toArray()
+                }
+            )[0]
+        );
         if(!fromGPUArr) this.manager.disposeGPUArr(gpuArr);
-        const resGPUArr = this.fftManager.parallelFFT(fftInputArr, true, true);
-        this.manager.disposeGPUArr(fftInputArr);
-        if(toGPUArr) return resGPUArr;
-        else{
-            const resArr = this.manager.gpuArrToArr(resGPUArr);
-            this.manager.disposeGPUArr(resGPUArr);
-            return resArr;
-        }
+        const resGPUArr = this.fftManager.parallelFFT(fftInputArr);
+        fftInputArr.dispose(this.manager);
+        return resGPUArr;
     }
     dispose(){
         this.manager.disposeKernel(this.windowKernel);

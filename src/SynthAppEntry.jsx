@@ -45,8 +45,6 @@ class SynthApp extends React.Component {
         this.sound = buffer;
         const bufferView = this.sound.getChannelData(0);
 
-        const wrapWidth = 2048;
-        const truncBuff = new Float32Array(bufferView.buffer, 0, wrapWidth * 256);
         const spectroKernel = new SpectrogramKernel(this.gpgpuManager);
         const spectro = spectroKernel.run(bufferView, 2048, 5, 2, 2048);
         spectroKernel.dispose();
